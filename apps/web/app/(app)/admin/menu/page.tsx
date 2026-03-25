@@ -84,7 +84,7 @@ export default function AdminMenuPage() {
                 <button
                   type="button"
                   onClick={() => setSel(c.id)}
-                  className={`w-full rounded-lg px-3 py-2 text-left ${
+                  className={`w-full touch-manipulation rounded-lg px-3 py-2 text-left transition duration-75 active:scale-[0.99] ${
                     sel === c.id ? "bg-[var(--accent)] text-white" : "hover:bg-[var(--border)]"
                   }`}
                 >
@@ -100,7 +100,11 @@ export default function AdminMenuPage() {
               value={newCat}
               onChange={(e) => setNewCat(e.target.value)}
             />
-            <button type="button" onClick={addCategory} className="rounded-lg bg-[var(--accent)] px-4 text-white">
+            <button
+              type="button"
+              onClick={addCategory}
+              className="touch-manipulation rounded-lg bg-[var(--accent)] px-4 py-2 text-white transition duration-75 active:scale-[0.98]"
+            >
               Add
             </button>
           </div>
@@ -113,7 +117,11 @@ export default function AdminMenuPage() {
                 <span>
                   {it.name} — ₹{Number(it.price).toFixed(2)}
                 </span>
-                <button type="button" className="text-red-400" onClick={() => removeItem(it.id)}>
+                <button
+                  type="button"
+                  className="touch-manipulation rounded px-2 py-1 text-red-400 transition duration-75 active:scale-95 hover:underline"
+                  onClick={() => removeItem(it.id)}
+                >
                   Delete
                 </button>
               </li>
@@ -138,7 +146,11 @@ export default function AdminMenuPage() {
               value={newItem.description}
               onChange={(e) => setNewItem({ ...newItem, description: e.target.value })}
             />
-            <button type="button" onClick={addItem} className="w-full rounded-lg bg-emerald-600 py-2 text-white">
+            <button
+              type="button"
+              onClick={addItem}
+              className="w-full touch-manipulation rounded-lg bg-emerald-600 py-2 text-white transition duration-75 hover:brightness-110 active:scale-[0.99]"
+            >
               Add item
             </button>
           </div>

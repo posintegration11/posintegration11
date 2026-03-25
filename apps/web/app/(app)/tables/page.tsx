@@ -214,7 +214,7 @@ export default function TablesPage() {
                   key={t.id}
                   href={href}
                   prefetch
-                  className={`group block rounded-2xl border-2 p-5 shadow-md transition duration-200 hover:-translate-y-1 hover:shadow-xl active:scale-[0.99] ${statusStyle(t.status)}`}
+                  className={`group block rounded-2xl border-2 p-5 shadow-md transition duration-75 hover:-translate-y-0.5 hover:shadow-xl active:scale-[0.98] ${statusStyle(t.status)}`}
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="text-xl font-bold tracking-tight">Table {t.tableNumber}</div>

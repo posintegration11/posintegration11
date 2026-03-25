@@ -108,7 +108,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <Link
               key={l.href}
               href={l.href}
-              className={`rounded-lg px-3 py-2 text-sm font-medium ${
+              prefetch
+              className={`touch-manipulation rounded-lg px-3 py-2 text-sm font-medium transition duration-75 active:scale-[0.98] ${
                 pathname === l.href
                   ? "bg-[var(--accent)] text-white"
                   : "hover:bg-[var(--border)]"

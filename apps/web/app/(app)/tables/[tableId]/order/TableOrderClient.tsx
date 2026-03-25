@@ -39,7 +39,6 @@ export function TableOrderClient({ tableId }: { tableId: string }) {
   const [items, setItems] = useState<MenuItem[]>([]);
   const [menuLoading, setMenuLoading] = useState(false);
   const [search, setSearch] = useState("");
-  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [order, setOrder] = useState<OrderDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [walkInWithoutOrder, setWalkInWithoutOrder] = useState(false);
@@ -91,19 +90,15 @@ export function TableOrderClient({ tableId }: { tableId: string }) {
   }, []);
 
   useEffect(() => {
-    const t = window.setTimeout(() => setDebouncedSearch(search.trim()), 200);
-    return () => window.clearTimeout(t);
-  }, [search]);
-
-  useEffect(() => {
     const q = new URLSearchParams();
     if (catId) q.set("categoryId", catId);
-    if (debouncedSearch) q.set("q", debouncedSearch);
+    const qText = search.trim();
+    if (qText) q.set("q", qText);
     setMenuLoading(true);
     void api<MenuItem[]>(`/menu/items?${q.toString()}`)
       .then(setItems)
       .finally(() => setMenuLoading(false));
-  }, [catId, debouncedSearch]);
+  }, [catId, search]);
 
   useEffect(() => {
     let alive = true;
@@ -131,7 +126,7 @@ export function TableOrderClient({ tableId }: { tableId: string }) {
       socketResyncTimer.current = setTimeout(() => {
         socketResyncTimer.current = null;
         void syncOrderFromServer(id).catch(() => {});
-      }, 280);
+      }, 60);
     };
     s.on("order:updated", scheduleResync);
     return () => {
@@ -169,7 +164,55 @@ export function TableOrderClient({ tableId }: { tableId: string }) {
   async function addItem(menuItemId: string) {
     const oid = order?.id;
     if (!oid) return;
+    const mi = items.find((m) => m.id === menuItemId);
+    if (!mi) return;
     setMsg(null);
+
+    setOrder((prev) => {
+      if (!prev || prev.id !== oid) return prev;
+      const nextStatus = prev.status === "OPEN" ? "RUNNING" : prev.status;
+      const pendingOpt = prev.items.find(
+        (i) => String(i.id).startsWith("opt-") && i.menuItemId === menuItemId && i.status === "ADDED",
+      );
+      if (pendingOpt) {
+        const q = pendingOpt.quantity + 1;
+        const lt = (Number(pendingOpt.itemPriceSnapshot) * q).toFixed(2);
+        return {
+          ...prev,
+          status: nextStatus,
+          items: prev.items.map((i) => (i.id === pendingOpt.id ? { ...i, quantity: q, lineTotal: lt } : i)),
+        };
+      }
+      const sameAdded = prev.items.find(
+        (i) =>
+          i.menuItemId === menuItemId &&
+          i.status === "ADDED" &&
+          !(i.note ?? "") &&
+          !String(i.id).startsWith("opt-"),
+      );
+      if (sameAdded) {
+        const q = sameAdded.quantity + 1;
+        const lt = (Number(sameAdded.itemPriceSnapshot) * q).toFixed(2);
+        return {
+          ...prev,
+          status: nextStatus,
+          items: prev.items.map((i) => (i.id === sameAdded.id ? { ...i, quantity: q, lineTotal: lt } : i)),
+        };
+      }
+      const optimistic: OrderItem = {
+        id: `opt-${menuItemId}-${Date.now()}`,
+        menuItemId,
+        itemNameSnapshot: mi.name,
+        itemPriceSnapshot: mi.price,
+        quantity: 1,
+        note: null,
+        status: "ADDED",
+        lineTotal: Number(mi.price).toFixed(2),
+        sentToKitchenAt: null,
+      };
+      return { ...prev, status: nextStatus, items: [...prev.items, optimistic] };
+    });
+
     try {
       const row = await api<OrderItem>(`/orders/${oid}/items`, {
         method: "POST",
@@ -178,15 +221,17 @@ export function TableOrderClient({ tableId }: { tableId: string }) {
       setOrder((prev) => {
         if (!prev || prev.id !== oid) return prev;
         const nextStatus = prev.status === "OPEN" ? "RUNNING" : prev.status;
-        const idx = prev.items.findIndex((i) => i.id === row.id);
+        const stripped = prev.items.filter(
+          (i) => !(String(i.id).startsWith("opt-") && i.menuItemId === row.menuItemId),
+        );
+        const idx = stripped.findIndex((i) => i.id === row.id);
         if (idx >= 0) {
-          const nextItems = [...prev.items];
+          const nextItems = [...stripped];
           nextItems[idx] = row;
           return { ...prev, status: nextStatus, items: nextItems };
         }
-        return { ...prev, status: nextStatus, items: [...prev.items, row] };
+        return { ...prev, status: nextStatus, items: [...stripped, row] };
       });
-      void syncOrderFromServer(oid).catch(() => {});
     } catch (e) {
       setMsg(e instanceof Error ? e.message : "Failed");
       void syncOrderFromServer(oid).catch(() => {});
@@ -196,11 +241,23 @@ export function TableOrderClient({ tableId }: { tableId: string }) {
   async function sendKitchen() {
     if (!order) return;
     const oid = order.id;
+    const snapshot = order;
+    const nowIso = new Date().toISOString();
     setMsg(null);
+    setOrder((prev) => {
+      if (!prev || prev.id !== oid) return prev;
+      return {
+        ...prev,
+        status: "KOT_SENT",
+        items: prev.items.map((i) =>
+          i.status === "ADDED" ? { ...i, status: "SENT_TO_KITCHEN", sentToKitchenAt: nowIso } : i,
+        ),
+      };
+    });
     try {
       await api(`/orders/${oid}/send-to-kitchen`, { method: "POST" });
-      await syncOrderFromServer(oid);
     } catch (e) {
+      setOrder(snapshot);
       setMsg(e instanceof Error ? e.message : "Failed");
     }
   }
@@ -208,12 +265,14 @@ export function TableOrderClient({ tableId }: { tableId: string }) {
   async function readyBill() {
     if (!order) return;
     const oid = order.id;
+    const snapshot = order;
     setMsg(null);
+    setOrder((prev) => (prev && prev.id === oid ? { ...prev, status: "READY_FOR_BILLING" } : prev));
     try {
       await api(`/orders/${oid}/ready-for-billing`, { method: "POST" });
-      await syncOrderFromServer(oid);
       router.push(`/billing/${oid}`);
     } catch (e) {
+      setOrder(snapshot);
       setMsg(e instanceof Error ? e.message : "Failed");
     }
   }
@@ -222,13 +281,28 @@ export function TableOrderClient({ tableId }: { tableId: string }) {
     if (!order) return;
     if (quantity < 1) return;
     const oid = order.id;
+    const line = order.items.find((i) => i.id === itemId);
+    if (!line) return;
+    const snapshot = order;
+    const lineTotal = (Number(line.itemPriceSnapshot) * quantity).toFixed(2);
+    setOrder((prev) => {
+      if (!prev || prev.id !== oid) return prev;
+      return {
+        ...prev,
+        items: prev.items.map((i) => (i.id === itemId ? { ...i, quantity, lineTotal } : i)),
+      };
+    });
     try {
-      await api(`/orders/${oid}/items/${itemId}`, {
+      const updated = await api<OrderItem>(`/orders/${oid}/items/${itemId}`, {
         method: "PATCH",
         body: JSON.stringify({ quantity }),
       });
-      await syncOrderFromServer(oid);
+      setOrder((prev) => {
+        if (!prev || prev.id !== oid) return prev;
+        return { ...prev, items: prev.items.map((i) => (i.id === itemId ? updated : i)) };
+      });
     } catch (e) {
+      setOrder(snapshot);
       setMsg(e instanceof Error ? e.message : "Failed");
     }
   }
@@ -237,10 +311,31 @@ export function TableOrderClient({ tableId }: { tableId: string }) {
     if (!order) return;
     if (!confirm("Cancel this line?")) return;
     const oid = order.id;
+    if (String(itemId).startsWith("opt-")) {
+      setOrder((prev) => {
+        if (!prev || prev.id !== oid) return prev;
+        return { ...prev, items: prev.items.filter((i) => i.id !== itemId) };
+      });
+      return;
+    }
+    const snapshot = order;
+    setOrder((prev) => {
+      if (!prev || prev.id !== oid) return prev;
+      return {
+        ...prev,
+        items: prev.items.map((i) =>
+          i.id === itemId ? { ...i, status: "CANCELLED", lineTotal: "0" } : i,
+        ),
+      };
+    });
     try {
-      await api(`/orders/${oid}/items/${itemId}`, { method: "DELETE" });
-      await syncOrderFromServer(oid);
+      const updated = await api<OrderItem>(`/orders/${oid}/items/${itemId}`, { method: "DELETE" });
+      setOrder((prev) => {
+        if (!prev || prev.id !== oid) return prev;
+        return { ...prev, items: prev.items.map((i) => (i.id === itemId ? updated : i)) };
+      });
     } catch (e) {
+      setOrder(snapshot);
       setMsg(e instanceof Error ? e.message : "Failed");
     }
   }
@@ -351,7 +446,7 @@ export function TableOrderClient({ tableId }: { tableId: string }) {
               key={c.id}
               type="button"
               onClick={() => setCatId(c.id)}
-              className={`shrink-0 rounded-full px-4 py-2 text-sm font-medium transition ${
+              className={`shrink-0 rounded-full px-4 py-2 text-sm font-medium transition duration-75 active:scale-[0.97] ${
                 catId === c.id
                   ? "bg-[var(--accent)] text-white shadow-md shadow-[var(--accent)]/20"
                   : "bg-[var(--surface)] text-[var(--text)] hover:bg-[var(--border)]/40"
@@ -361,7 +456,7 @@ export function TableOrderClient({ tableId }: { tableId: string }) {
             </button>
           ))}
         </div>
-        <div className={`relative min-h-[120px] transition-opacity ${menuLoading ? "opacity-60" : "opacity-100"}`}>
+        <div className="relative min-h-[120px]">
           {menuLoading && items.length === 0 ? (
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
               {Array.from({ length: 6 }).map((_, i) => (
@@ -375,7 +470,7 @@ export function TableOrderClient({ tableId }: { tableId: string }) {
                   key={it.id}
                   type="button"
                   onClick={() => void addItem(it.id)}
-                  className="min-h-[3.5rem] touch-manipulation rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 text-left transition hover:-translate-y-0.5 hover:border-[var(--accent)] hover:shadow-md active:brightness-95"
+                  className="min-h-[3.5rem] touch-manipulation rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 text-left transition duration-75 hover:-translate-y-0.5 hover:border-[var(--accent)] hover:shadow-md active:scale-[0.98]"
                 >
                   <div className="font-semibold">{it.name}</div>
                   <div className="mt-1 tabular-nums text-[var(--success)]">₹{Number(it.price).toFixed(2)}</div>
@@ -409,28 +504,34 @@ export function TableOrderClient({ tableId }: { tableId: string }) {
                 {it.note && <div className="text-xs italic">{it.note}</div>}
                 {it.status === "ADDED" && (
                   <div className="mt-2 flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      className="rounded-lg bg-[var(--border)] px-2 py-1 text-xs transition hover:brightness-125"
-                      onClick={() => updateQty(it.id, it.quantity - 1)}
-                    >
-                      −
-                    </button>
-                    <span className="px-1">{it.quantity}</span>
-                    <button
-                      type="button"
-                      className="rounded-lg bg-[var(--border)] px-2 py-1 text-xs transition hover:brightness-125"
-                      onClick={() => updateQty(it.id, it.quantity + 1)}
-                    >
-                      +
-                    </button>
-                    <button
-                      type="button"
-                      className="rounded-lg bg-red-900/40 px-2 py-1 text-xs text-red-300 transition hover:bg-red-900/60"
-                      onClick={() => cancelLine(it.id)}
-                    >
-                      Cancel
-                    </button>
+                    {String(it.id).startsWith("opt-") ? (
+                      <span className="text-xs font-medium text-[var(--muted)]">Saving line…</span>
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          className="rounded-lg bg-[var(--border)] px-2 py-1 text-xs transition duration-75 hover:brightness-125 active:scale-95"
+                          onClick={() => void updateQty(it.id, it.quantity - 1)}
+                        >
+                          −
+                        </button>
+                        <span className="px-1">{it.quantity}</span>
+                        <button
+                          type="button"
+                          className="rounded-lg bg-[var(--border)] px-2 py-1 text-xs transition duration-75 hover:brightness-125 active:scale-95"
+                          onClick={() => void updateQty(it.id, it.quantity + 1)}
+                        >
+                          +
+                        </button>
+                        <button
+                          type="button"
+                          className="rounded-lg bg-red-900/40 px-2 py-1 text-xs text-red-300 transition duration-75 hover:bg-red-900/60 active:scale-95"
+                          onClick={() => void cancelLine(it.id)}
+                        >
+                          Cancel
+                        </button>
+                      </>
+                    )}
                   </div>
                 )}
               </li>
@@ -439,16 +540,16 @@ export function TableOrderClient({ tableId }: { tableId: string }) {
           <div className="mt-4 flex flex-col gap-2">
             <button
               type="button"
-              onClick={sendKitchen}
-              className="w-full rounded-xl bg-amber-600 py-3 text-lg font-semibold text-white shadow-md transition hover:brightness-110 active:scale-[0.99]"
+              onClick={() => void sendKitchen()}
+              className="w-full rounded-xl bg-amber-600 py-3 text-lg font-semibold text-white shadow-md transition duration-75 hover:brightness-110 active:scale-[0.98]"
             >
               Send to kitchen
             </button>
             {canBill && (
               <button
                 type="button"
-                onClick={readyBill}
-                className="w-full rounded-xl bg-[var(--accent)] py-3 text-lg font-semibold text-white shadow-md transition hover:brightness-110 active:scale-[0.99]"
+                onClick={() => void readyBill()}
+                className="w-full rounded-xl bg-[var(--accent)] py-3 text-lg font-semibold text-white shadow-md transition duration-75 hover:brightness-110 active:scale-[0.98]"
               >
                 Ready for billing
               </button>

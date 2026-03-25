@@ -48,11 +48,16 @@ export function BillingClient({ orderId }: { orderId: string }) {
   async function recalc() {
     setMsg(null);
     try {
-      await api(`/billing/orders/${orderId}/recalculate`, {
-        method: "POST",
-        body: JSON.stringify({ discountTotal: discount }),
-      });
-      await refresh();
+      const patch = await api<Pick<OrderDetail, "subtotal" | "taxTotal" | "discountTotal" | "grandTotal">>(
+        `/billing/orders/${orderId}/recalculate`,
+        {
+          method: "POST",
+          body: JSON.stringify({ discountTotal: discount }),
+        },
+      );
+      setOrder((o) => (o ? { ...o, ...patch } : null));
+      setDiscount(Number(patch.discountTotal));
+      void refresh();
     } catch (e) {
       setMsg(e instanceof Error ? e.message : "Failed");
     }
@@ -63,7 +68,7 @@ export function BillingClient({ orderId }: { orderId: string }) {
     try {
       const inv = await api<OrderInvoice>(`/billing/orders/${orderId}/invoice`, { method: "POST" });
       setInvoice(inv);
-      await refresh();
+      void refresh();
     } catch (e) {
       setMsg(e instanceof Error ? e.message : "Failed");
     }
@@ -74,8 +79,10 @@ export function BillingClient({ orderId }: { orderId: string }) {
     setMsg(null);
     const grand = Number(invoice.grandTotal);
     try {
+      type PaidPayload = OrderInvoice & { order: OrderDetail };
+      let fresh: PaidPayload;
       if (!split) {
-        await api(`/billing/invoices/${invoice.id}/pay`, {
+        fresh = await api<PaidPayload>(`/billing/invoices/${invoice.id}/pay`, {
           method: "POST",
           body: JSON.stringify({
             payments: [{ amount: grand, mode }],
@@ -88,7 +95,7 @@ export function BillingClient({ orderId }: { orderId: string }) {
           setMsg("Invalid split amounts");
           return;
         }
-        await api(`/billing/invoices/${invoice.id}/pay`, {
+        fresh = await api<PaidPayload>(`/billing/invoices/${invoice.id}/pay`, {
           method: "POST",
           body: JSON.stringify({
             payments: [
@@ -98,7 +105,19 @@ export function BillingClient({ orderId }: { orderId: string }) {
           }),
         });
       }
-      await refresh();
+      setOrder(fresh.order);
+      setInvoice({
+        id: fresh.id,
+        invoiceNumber: fresh.invoiceNumber,
+        subtotal: fresh.subtotal,
+        taxTotal: fresh.taxTotal,
+        discountTotal: fresh.discountTotal,
+        grandTotal: fresh.grandTotal,
+        paymentStatus: fresh.paymentStatus,
+        paymentMode: fresh.paymentMode,
+        createdAt: fresh.createdAt,
+      });
+      void refresh();
     } catch (e) {
       setMsg(e instanceof Error ? e.message : "Failed");
     }
@@ -160,7 +179,7 @@ export function BillingClient({ orderId }: { orderId: string }) {
           <button
             type="button"
             onClick={recalc}
-            className="rounded-xl bg-[var(--border)] px-4 py-2 font-medium"
+            className="touch-manipulation rounded-xl bg-[var(--border)] px-4 py-2 font-medium transition duration-75 active:scale-[0.98]"
           >
             Recalculate tax
           </button>
@@ -168,7 +187,7 @@ export function BillingClient({ orderId }: { orderId: string }) {
             type="button"
             onClick={createInvoice}
             disabled={!!invoice && !paid}
-            className="ml-2 rounded-xl bg-[var(--accent)] px-4 py-2 font-medium text-white disabled:opacity-40"
+            className="ml-2 touch-manipulation rounded-xl bg-[var(--accent)] px-4 py-2 font-medium text-white transition duration-75 active:scale-[0.98] disabled:opacity-40"
           >
             Generate invoice
           </button>
@@ -221,7 +240,7 @@ export function BillingClient({ orderId }: { orderId: string }) {
               <button
                 type="button"
                 onClick={pay}
-                className="w-full rounded-xl bg-emerald-600 py-3 text-lg font-semibold text-white"
+                className="w-full touch-manipulation rounded-xl bg-emerald-600 py-3 text-lg font-semibold text-white transition duration-75 hover:brightness-110 active:scale-[0.98]"
               >
                 Record payment
               </button>
@@ -316,7 +335,7 @@ export function BillingClient({ orderId }: { orderId: string }) {
           <p className="mt-6 text-center text-xs text-gray-600">{settings.invoiceFooter}</p>
           <button
             type="button"
-            className="no-print mt-6 w-full rounded-lg border border-gray-400 py-2 text-sm"
+            className="no-print mt-6 w-full touch-manipulation rounded-lg border border-gray-400 py-2 text-sm transition duration-75 active:scale-[0.99]"
             onClick={() => window.print()}
           >
             Print

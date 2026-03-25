@@ -44,7 +44,7 @@ function StatCard({
 }) {
   return (
     <div
-      className={`group relative overflow-hidden rounded-2xl border-2 p-5 shadow-lg transition duration-200 hover:-translate-y-1 hover:shadow-xl ${accent}`}
+      className={`group relative overflow-hidden rounded-2xl border-2 p-5 shadow-lg transition duration-75 hover:-translate-y-1 hover:shadow-xl active:scale-[0.99] ${accent}`}
     >
       <div className="pointer-events-none absolute -right-6 -top-6 size-28 rounded-full bg-white/5 blur-2xl transition group-hover:bg-white/10" />
       <div className="relative flex items-start justify-between gap-3">

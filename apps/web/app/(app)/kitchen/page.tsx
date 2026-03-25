@@ -74,7 +74,7 @@ export default function KitchenPage() {
     loadTimer.current = setTimeout(() => {
       loadTimer.current = null;
       load();
-    }, 280);
+    }, 45);
   }, [load]);
 
   useEffect(() => {
@@ -103,15 +103,23 @@ export default function KitchenPage() {
 
   async function setLine(itemId: string, status: string) {
     setError(null);
+    const snapshot = kots;
+    setKots((prev) =>
+      prev.map((k) => ({
+        ...k,
+        items: k.items.map((li) => (li.id === itemId ? { ...li, status } : li)),
+      })),
+    );
     setBusyLine(itemId);
     try {
       await api(`/kot/items/${itemId}`, {
         method: "PATCH",
         body: JSON.stringify({ status }),
       });
-      await load();
+      void load();
     } catch {
       setError("Could not update line — try again");
+      setKots(snapshot);
     } finally {
       setBusyLine(null);
     }
@@ -119,15 +127,22 @@ export default function KitchenPage() {
 
   async function setKot(kotId: string, status: string) {
     setError(null);
+    const snapshot = kots;
+    if (status === "COMPLETED") {
+      setKots((prev) => prev.filter((k) => k.id !== kotId));
+    } else {
+      setKots((prev) => prev.map((k) => (k.id === kotId ? { ...k, status } : k)));
+    }
     setBusyKot(kotId);
     try {
       await api(`/kot/${kotId}`, {
         method: "PATCH",
         body: JSON.stringify({ status }),
       });
-      await load();
+      void load();
     } catch {
       setError("Could not update ticket — try again");
+      setKots(snapshot);
     } finally {
       setBusyKot(null);
     }
@@ -158,7 +173,7 @@ export default function KitchenPage() {
               setLoading(true);
               load();
             }}
-            className="rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-2.5 text-sm font-medium transition hover:border-[var(--accent)] active:scale-[0.98]"
+            className="rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-2.5 text-sm font-medium transition duration-75 hover:border-[var(--accent)] active:scale-[0.98]"
           >
             Refresh
           </button>
@@ -197,7 +212,7 @@ export default function KitchenPage() {
                       return (
                         <article
                           key={k.id}
-                          className="rounded-xl border border-[var(--border)] bg-[var(--bg)]/80 p-4 shadow-md transition hover:-translate-y-0.5 hover:shadow-lg"
+                          className="rounded-xl border border-[var(--border)] bg-[var(--bg)]/80 p-4 shadow-md transition duration-75 hover:-translate-y-0.5 hover:shadow-lg active:scale-[0.99]"
                         >
                           <div className="flex flex-wrap items-start justify-between gap-2">
                             <div className="min-w-0 flex-1">
@@ -246,7 +261,7 @@ export default function KitchenPage() {
                                         type="button"
                                         disabled={disabledLine}
                                         onClick={() => void setLine(li.id, "PREPARING")}
-                                        className="min-h-10 flex-1 rounded-lg bg-amber-600 px-3 text-sm font-semibold text-white shadow transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
+                                        className="min-h-10 flex-1 touch-manipulation rounded-lg bg-amber-600 px-3 text-sm font-semibold text-white shadow transition duration-75 hover:brightness-110 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
                                       >
                                         {lineBusy ? "…" : "Preparing"}
                                       </button>
@@ -256,7 +271,7 @@ export default function KitchenPage() {
                                         type="button"
                                         disabled={disabledLine}
                                         onClick={() => void setLine(li.id, "READY")}
-                                        className="min-h-10 flex-1 rounded-lg bg-emerald-600 px-3 text-sm font-semibold text-white shadow transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
+                                        className="min-h-10 flex-1 touch-manipulation rounded-lg bg-emerald-600 px-3 text-sm font-semibold text-white shadow transition duration-75 hover:brightness-110 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
                                       >
                                         {lineBusy ? "…" : "Ready"}
                                       </button>
@@ -266,7 +281,7 @@ export default function KitchenPage() {
                                         type="button"
                                         disabled={disabledLine}
                                         onClick={() => void setLine(li.id, "SERVED")}
-                                        className="min-h-10 flex-1 rounded-lg bg-sky-600 px-3 text-sm font-semibold text-white shadow transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
+                                        className="min-h-10 flex-1 touch-manipulation rounded-lg bg-sky-600 px-3 text-sm font-semibold text-white shadow transition duration-75 hover:brightness-110 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
                                       >
                                         {lineBusy ? "…" : "Served"}
                                       </button>
@@ -282,7 +297,7 @@ export default function KitchenPage() {
                                 type="button"
                                 disabled={kotBusy || busyLine !== null}
                                 onClick={() => void setKot(k.id, "PREPARING")}
-                                className="w-full rounded-lg border border-amber-500/40 bg-amber-900/30 py-2.5 text-sm font-semibold text-amber-100 transition hover:bg-amber-900/45 disabled:cursor-not-allowed disabled:opacity-50"
+                                className="w-full touch-manipulation rounded-lg border border-amber-500/40 bg-amber-900/30 py-2.5 text-sm font-semibold text-amber-100 transition duration-75 hover:bg-amber-900/45 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50"
                               >
                                 {kotBusy ? "Updating…" : "Start ticket (preparing)"}
                               </button>
@@ -292,7 +307,7 @@ export default function KitchenPage() {
                                 type="button"
                                 disabled={kotBusy || busyLine !== null}
                                 onClick={() => void setKot(k.id, "READY")}
-                                className="w-full rounded-lg border border-emerald-500/40 bg-emerald-900/25 py-2.5 text-sm font-semibold text-emerald-100 transition hover:bg-emerald-900/40 disabled:cursor-not-allowed disabled:opacity-50"
+                                className="w-full touch-manipulation rounded-lg border border-emerald-500/40 bg-emerald-900/25 py-2.5 text-sm font-semibold text-emerald-100 transition duration-75 hover:bg-emerald-900/40 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50"
                               >
                                 {kotBusy ? "Updating…" : "All ready (ticket)"}
                               </button>
@@ -302,7 +317,7 @@ export default function KitchenPage() {
                                 type="button"
                                 disabled={kotBusy || busyLine !== null}
                                 onClick={() => void setKot(k.id, "COMPLETED")}
-                                className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] py-2.5 text-sm font-semibold transition hover:bg-[var(--border)]/30 disabled:cursor-not-allowed disabled:opacity-50"
+                                className="w-full touch-manipulation rounded-lg border border-[var(--border)] bg-[var(--surface)] py-2.5 text-sm font-semibold transition duration-75 hover:bg-[var(--border)]/30 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50"
                               >
                                 {kotBusy ? "Updating…" : "Complete ticket"}
                               </button>

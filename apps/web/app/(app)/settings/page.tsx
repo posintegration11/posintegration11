@@ -95,7 +95,7 @@ export default function SettingsPage() {
                 </div>
               )}
               <div className="flex flex-col gap-2">
-                <label className="cursor-pointer rounded-lg border border-[var(--border)] bg-[var(--bg)] px-3 py-2 text-sm font-medium hover:bg-[var(--border)]/40">
+                <label className="cursor-pointer touch-manipulation rounded-lg border border-[var(--border)] bg-[var(--bg)] px-3 py-2 text-sm font-medium transition duration-75 hover:bg-[var(--border)]/40 active:scale-[0.98]">
                   <input
                     type="file"
                     accept="image/*"
@@ -118,7 +118,7 @@ export default function SettingsPage() {
                 {s.logoUrl ? (
                   <button
                     type="button"
-                    className="text-left text-sm text-red-400 hover:underline"
+                    className="touch-manipulation text-left text-sm text-red-400 transition duration-75 hover:underline active:scale-[0.99]"
                     onClick={() => setS({ ...s, logoUrl: null })}
                   >
                     Remove logo
@@ -196,7 +196,7 @@ export default function SettingsPage() {
 
         <button
           type="submit"
-          className="w-full rounded-xl bg-[var(--accent)] py-3 font-semibold text-white transition hover:brightness-110"
+          className="w-full touch-manipulation rounded-xl bg-[var(--accent)] py-3 font-semibold text-white transition duration-75 hover:brightness-110 active:scale-[0.98]"
         >
           Save
         </button>

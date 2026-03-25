@@ -85,7 +85,10 @@ export default function AdminUsersPage() {
             </option>
           ))}
         </select>
-        <button type="submit" className="rounded-xl bg-[var(--accent)] py-2 text-white">
+        <button
+          type="submit"
+          className="touch-manipulation rounded-xl bg-[var(--accent)] py-2 font-medium text-white transition duration-75 hover:brightness-110 active:scale-[0.98]"
+        >
           Create
         </button>
       </form>
@@ -120,7 +123,7 @@ export default function AdminUsersPage() {
                 </td>
                 <td className="p-3">
                   <select
-                    className="rounded border border-[var(--border)] bg-[var(--bg)] px-2 py-1"
+                    className="touch-manipulation rounded border border-[var(--border)] bg-[var(--bg)] px-2 py-1 transition duration-75"
                     value={u.status}
                     onChange={(e) => patch(u.id, { status: e.target.value })}
                   >

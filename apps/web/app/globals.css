@@ -18,6 +18,14 @@ body {
   font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
 }
 
+/* Faster taps on tablets / phones (avoids ~300ms click delay) */
+button,
+a[role="button"],
+input[type="button"],
+input[type="submit"] {
+  touch-action: manipulation;
+}
+
 @media print {
   .no-print {
     display: none !important;

@@ -52,7 +52,7 @@ function ReportStat({
 }) {
   return (
     <div
-      className={`rounded-2xl border-2 p-4 shadow-md transition hover:-translate-y-0.5 hover:shadow-lg ${accent}`}
+      className={`rounded-2xl border-2 p-4 shadow-md transition duration-75 hover:-translate-y-0.5 hover:shadow-lg active:scale-[0.99] ${accent}`}
     >
       <div className="text-xs font-semibold uppercase tracking-wide text-[var(--muted)]">{label}</div>
       <div className="mt-1 text-2xl font-bold tabular-nums text-[var(--text)]">{value}</div>
@@ -243,7 +243,7 @@ export default function ReportsPage() {
               key={key}
               type="button"
               onClick={() => applyPreset(key)}
-              className="rounded-full border border-[var(--border)] bg-[var(--bg)] px-3 py-1.5 text-xs font-medium transition hover:border-[var(--accent)] hover:text-[var(--accent)]"
+              className="touch-manipulation rounded-full border border-[var(--border)] bg-[var(--bg)] px-3 py-1.5 text-xs font-medium transition duration-75 hover:border-[var(--accent)] hover:text-[var(--accent)] active:scale-[0.97]"
             >
               {label}
             </button>
@@ -272,7 +272,7 @@ export default function ReportsPage() {
             type="button"
             onClick={() => void load({ silent: true })}
             disabled={refreshing || loading}
-            className="rounded-xl bg-[var(--accent)] px-5 py-2 text-sm font-semibold text-white transition hover:brightness-110 disabled:opacity-50"
+            className="touch-manipulation rounded-xl bg-[var(--accent)] px-5 py-2 text-sm font-semibold text-white transition duration-75 hover:brightness-110 active:scale-[0.98] disabled:opacity-50"
           >
             {refreshing ? "Loading…" : "Refresh"}
           </button>
