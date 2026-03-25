@@ -81,7 +81,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex min-h-screen">
-      <aside className="no-print w-52 shrink-0 border-r border-[var(--border)] bg-[var(--surface)] p-4">
+      <aside className="no-print sticky top-0 h-dvh max-h-dvh w-52 shrink-0 overflow-y-auto overflow-x-hidden overscroll-y-contain border-r border-[var(--border)] bg-[var(--surface)] p-4">
         <div className="mb-6 flex gap-2.5">
           <ShopBrandMark name={shopName} logoUrl={shopLogo} size="sm" />
           <div className="min-w-0 flex-1">
@@ -122,12 +122,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <button
           type="button"
           onClick={logout}
-          className="mt-8 w-full rounded-lg border border-[var(--border)] px-3 py-2 text-sm hover:bg-[var(--border)]"
+          className="mt-6 w-full shrink-0 touch-manipulation rounded-lg border border-[var(--border)] px-3 py-2 text-sm transition duration-75 hover:bg-[var(--border)] active:scale-[0.99]"
         >
           Log out
         </button>
       </aside>
-      <main className="min-h-screen flex-1 p-6">{children}</main>
+      <main className="min-h-screen min-w-0 flex-1 p-6">{children}</main>
     </div>
   );
 }
