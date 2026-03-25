@@ -25,7 +25,13 @@ if (!nextBin) {
   process.exit(1);
 }
 
-const args = process.argv.slice(2);
+let args = process.argv.slice(2);
+/** Render / PaaS: bind to public PORT and all interfaces */
+const port = process.env.PORT;
+if (args[0] === "start") {
+  if (!args.includes("-H")) args = [...args, "-H", "0.0.0.0"];
+  if (port && !args.includes("-p")) args = [...args, "-p", port];
+}
 const child = spawn(process.execPath, [nextBin, ...args], {
   cwd: webRoot,
   stdio: "inherit",

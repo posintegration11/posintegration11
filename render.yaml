@@ -1,0 +1,50 @@
+# Render Blueprint: https://render.com/docs/blueprint-spec
+# After first deploy: set CORS_ORIGIN (API) and NEXT_PUBLIC_* (web) to your two *.onrender.com URLs, then redeploy web.
+
+services:
+  - type: web
+    name: pos-api
+    runtime: node
+    region: oregon
+    plan: free
+    branch: main
+    rootDir: .
+    buildCommand: npm ci && npm ci --prefix apps/api && npx prisma generate && npm run build --prefix apps/api && npx prisma migrate deploy
+    startCommand: node apps/api/dist/index.js
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: "22.14.0"
+      - key: NODE_ENV
+        value: production
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRES_IN
+        value: 7d
+      # Full web origin, e.g. https://pos-web-xxxx.onrender.com (no trailing slash). Comma-separate for multiple.
+      - key: CORS_ORIGIN
+        sync: false
+      # Supabase Session pooler or Render Postgres connection string
+      - key: DATABASE_URL
+        sync: false
+
+  - type: web
+    name: pos-web
+    runtime: node
+    region: oregon
+    plan: free
+    branch: main
+    rootDir: apps/web
+    buildCommand: npm ci && npm run build
+    startCommand: npm run start
+    envVars:
+      - key: NODE_VERSION
+        value: "22.14.0"
+      - key: NODE_ENV
+        value: production
+      # Set to your API URL, e.g. https://pos-api-xxxx.onrender.com (no path, no trailing slash)
+      - key: NEXT_PUBLIC_API_URL
+        sync: false
+      # Same host as API for Socket.IO, e.g. https://pos-api-xxxx.onrender.com
+      - key: NEXT_PUBLIC_SOCKET_URL
+        sync: false
