@@ -1,0 +1,273 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+// Duplicate client for apps/api when using per-app npm installs (no hoisted workspace).
+generator clientApi {
+  provider = "prisma-client-js"
+  output   = "../apps/api/node_modules/.prisma/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  CASHIER
+  WAITER
+  KITCHEN
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum RestaurantTableStatus {
+  FREE
+  OCCUPIED
+  BILLING_PENDING
+}
+
+enum CategoryStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum OrderStatus {
+  OPEN
+  RUNNING
+  KOT_SENT
+  READY_FOR_BILLING
+  PAID
+  CLOSED
+  CANCELLED
+}
+
+enum OrderItemStatus {
+  ADDED
+  SENT_TO_KITCHEN
+  PREPARING
+  READY
+  SERVED
+  CANCELLED
+}
+
+enum KOTStatus {
+  PENDING
+  PREPARING
+  READY
+  COMPLETED
+}
+
+enum KOTItemStatus {
+  PENDING
+  PREPARING
+  READY
+  SERVED
+}
+
+enum PaymentStatus {
+  UNPAID
+  PAID
+  PARTIAL
+  FAILED
+}
+
+enum PaymentMode {
+  CASH
+  CARD
+  UPI
+}
+
+model User {
+  id           String     @id @default(uuid())
+  name         String
+  email        String     @unique
+  passwordHash String     @map("password_hash")
+  role         UserRole
+  status       UserStatus @default(ACTIVE)
+  createdAt    DateTime   @default(now()) @map("created_at")
+  updatedAt    DateTime   @updatedAt @map("updated_at")
+
+  ordersCreated Order[]    @relation("OrderCreatedBy")
+  auditLogs     AuditLog[]
+
+  @@map("users")
+}
+
+model RestaurantTable {
+  id          String                 @id @default(uuid())
+  tableNumber Int                    @unique @map("table_number")
+  name        String?
+  capacity    Int?
+  isWalkIn    Boolean                @default(false) @map("is_walk_in")
+  status      RestaurantTableStatus  @default(FREE)
+  createdAt   DateTime               @default(now()) @map("created_at")
+  updatedAt   DateTime               @updatedAt @map("updated_at")
+
+  orders Order[]
+  kots   Kot[]
+
+  @@map("restaurant_tables")
+}
+
+model MenuCategory {
+  id        String         @id @default(uuid())
+  name      String
+  status    CategoryStatus @default(ACTIVE)
+  sortOrder Int            @default(0) @map("sort_order")
+  items     MenuItem[]
+
+  @@map("menu_categories")
+}
+
+model MenuItem {
+  id          String        @id @default(uuid())
+  categoryId  String        @map("category_id")
+  category    MenuCategory  @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  price       Decimal       @db.Decimal(12, 2)
+  taxRate     Decimal?      @map("tax_rate") @db.Decimal(5, 2)
+  isAvailable Boolean       @default(true) @map("is_available")
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+
+  orderItems OrderItem[]
+
+  @@map("menu_items")
+}
+
+model Order {
+  id            String      @id @default(uuid())
+  orderNumber   String      @unique @map("order_number")
+  tableId       String      @map("table_id")
+  table         RestaurantTable @relation(fields: [tableId], references: [id], onDelete: Restrict)
+  status        OrderStatus @default(OPEN)
+  createdById   String      @map("created_by_id")
+  createdBy     User        @relation("OrderCreatedBy", fields: [createdById], references: [id])
+  openedAt      DateTime    @default(now()) @map("opened_at")
+  closedAt      DateTime?   @map("closed_at")
+  subtotal      Decimal     @default(0) @db.Decimal(12, 2)
+  taxTotal      Decimal     @default(0) @map("tax_total") @db.Decimal(12, 2)
+  discountTotal Decimal     @default(0) @map("discount_total") @db.Decimal(12, 2)
+  grandTotal    Decimal     @default(0) @map("grand_total") @db.Decimal(12, 2)
+
+  items    OrderItem[]
+  kots     Kot[]
+  invoices Invoice[]
+
+  @@index([tableId, status])
+  @@map("orders")
+}
+
+model OrderItem {
+  id                 String          @id @default(uuid())
+  orderId            String          @map("order_id")
+  order              Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  menuItemId         String          @map("menu_item_id")
+  menuItem           MenuItem        @relation(fields: [menuItemId], references: [id])
+  itemNameSnapshot   String          @map("item_name_snapshot")
+  itemPriceSnapshot  Decimal         @map("item_price_snapshot") @db.Decimal(12, 2)
+  quantity           Int
+  note               String?
+  status             OrderItemStatus @default(ADDED)
+  lineTotal          Decimal         @map("line_total") @db.Decimal(12, 2)
+  sentToKitchenAt    DateTime?       @map("sent_to_kitchen_at")
+
+  kotItems KotItem[]
+
+  @@index([orderId])
+  @@map("order_items")
+}
+
+model Kot {
+  id        String    @id @default(uuid())
+  orderId   String    @map("order_id")
+  order     Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  tableId   String    @map("table_id")
+  table     RestaurantTable @relation(fields: [tableId], references: [id])
+  status    KOTStatus @default(PENDING)
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  items KotItem[]
+
+  @@index([status])
+  @@map("kots")
+}
+
+model KotItem {
+  id          String        @id @default(uuid())
+  kotId       String        @map("kot_id")
+  kot         Kot           @relation(fields: [kotId], references: [id], onDelete: Cascade)
+  orderItemId String        @map("order_item_id")
+  orderItem   OrderItem     @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  quantity    Int
+  note        String?
+  status      KOTItemStatus @default(PENDING)
+
+  @@map("kot_items")
+}
+
+model Invoice {
+  id             String        @id @default(uuid())
+  orderId        String        @map("order_id")
+  order          Order         @relation(fields: [orderId], references: [id])
+  invoiceNumber  String        @unique @map("invoice_number")
+  subtotal       Decimal       @db.Decimal(12, 2)
+  taxTotal       Decimal       @map("tax_total") @db.Decimal(12, 2)
+  discountTotal  Decimal       @map("discount_total") @db.Decimal(12, 2)
+  grandTotal     Decimal       @map("grand_total") @db.Decimal(12, 2)
+  paymentStatus  PaymentStatus @default(UNPAID) @map("payment_status")
+  paymentMode    PaymentMode?  @map("payment_mode")
+  createdAt      DateTime      @default(now()) @map("created_at")
+
+  payments Payment[]
+
+  @@index([createdAt])
+  @@map("invoices")
+}
+
+model Payment {
+  id         String      @id @default(uuid())
+  invoiceId  String      @map("invoice_id")
+  invoice    Invoice     @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  amount     Decimal     @db.Decimal(12, 2)
+  mode       PaymentMode
+  reference  String?
+  paidAt     DateTime    @default(now()) @map("paid_at")
+
+  @@map("payments")
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  userId     String?  @map("user_id")
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action     String
+  entityType String   @map("entity_type")
+  entityId   String?  @map("entity_id")
+  metadata   Json?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+model RestaurantSettings {
+  id            String  @id @default("default")
+  name          String  @default("My Restaurant")
+  /** Data URL or HTTPS URL for header / invoices */
+  logoUrl       String? @map("logo_url") @db.Text
+  address       String  @default("")
+  gstLabel      String  @default("GST") @map("gst_label")
+  taxPercent    Decimal @default(0) @map("tax_percent") @db.Decimal(5, 2)
+  invoiceFooter String  @default("Thank you!") @map("invoice_footer")
+  currency      String  @default("INR")
+  tableCount    Int     @default(10) @map("table_count")
+
+  @@map("restaurant_settings")
+}
