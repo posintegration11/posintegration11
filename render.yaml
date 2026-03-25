@@ -9,7 +9,8 @@ services:
     plan: free
     branch: main
     rootDir: .
-    buildCommand: npm ci && npm ci --prefix apps/api && npx prisma generate && npm run build --prefix apps/api && npx prisma migrate deploy
+    # Include devDependencies so TypeScript + @types/* install during build (NODE_ENV=production omits them by default).
+    buildCommand: npm ci --include=dev && npm ci --prefix apps/api --include=dev && npx prisma generate && npm run build --prefix apps/api && npx prisma migrate deploy
     startCommand: node apps/api/dist/index.js
     healthCheckPath: /health
     envVars:
@@ -35,7 +36,7 @@ services:
     plan: free
     branch: main
     rootDir: apps/web
-    buildCommand: npm ci && npm run build
+    buildCommand: npm ci --include=dev && npm run build
     startCommand: npm run start
     envVars:
       - key: NODE_VERSION
