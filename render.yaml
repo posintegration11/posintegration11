@@ -10,7 +10,8 @@ services:
     branch: main
     rootDir: .
     # Include devDependencies so TypeScript + @types/* install during build (NODE_ENV=production omits them by default).
-    buildCommand: npm ci --include=dev && npm ci --prefix apps/api --include=dev && npx prisma generate && npm run build --prefix apps/api && npx prisma migrate deploy
+    # Use db push (not migrate deploy): Supabase / existing DBs often hit P3005 until you baseline migrations locally.
+    buildCommand: npm ci --include=dev && npm ci --prefix apps/api --include=dev && npx prisma generate && npm run build --prefix apps/api && npx prisma db push
     startCommand: node apps/api/dist/index.js
     healthCheckPath: /health
     envVars:
