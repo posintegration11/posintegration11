@@ -154,25 +154,39 @@ export default function PlatformAdminPage() {
                     {new Date(r.createdAt).toLocaleString()}
                   </td>
                   <td className="px-4 py-3">
-                    {r.status === "SUSPENDED" ? (
-                      <button
-                        type="button"
-                        disabled={busyId === r.id}
-                        onClick={() => void setStatus(r.id, "ACTIVE")}
-                        className="text-xs font-semibold text-emerald-400 hover:underline disabled:opacity-50"
-                      >
-                        Activate
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        disabled={busyId === r.id}
-                        onClick={() => void setStatus(r.id, "SUSPENDED")}
-                        className="text-xs font-semibold text-amber-300 hover:underline disabled:opacity-50"
-                      >
-                        Suspend
-                      </button>
-                    )}
+                    <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+                      {r.status === "PENDING_VERIFICATION" ? (
+                        <button
+                          type="button"
+                          disabled={busyId === r.id}
+                          onClick={() => void setStatus(r.id, "ACTIVE")}
+                          className="text-left text-xs font-semibold text-emerald-400 hover:underline disabled:opacity-50"
+                          title="Activates restaurant + pending owner account (same as email verify)"
+                        >
+                          Approve / verify
+                        </button>
+                      ) : null}
+                      {r.status === "SUSPENDED" ? (
+                        <button
+                          type="button"
+                          disabled={busyId === r.id}
+                          onClick={() => void setStatus(r.id, "ACTIVE")}
+                          className="text-left text-xs font-semibold text-emerald-400 hover:underline disabled:opacity-50"
+                        >
+                          Activate
+                        </button>
+                      ) : null}
+                      {r.status === "ACTIVE" ? (
+                        <button
+                          type="button"
+                          disabled={busyId === r.id}
+                          onClick={() => void setStatus(r.id, "SUSPENDED")}
+                          className="text-left text-xs font-semibold text-amber-300 hover:underline disabled:opacity-50"
+                        >
+                          Suspend
+                        </button>
+                      ) : null}
+                    </div>
                   </td>
                 </tr>
               ))}

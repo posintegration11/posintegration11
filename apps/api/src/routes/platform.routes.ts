@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { RestaurantStatus, UserRole } from "@prisma/client";
+import { RestaurantStatus, UserRole, UserStatus } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../prisma.js";
 import { authJwt, requirePlatformAllowlist, requireRole } from "../middleware/auth.js";
@@ -53,6 +53,42 @@ router.patch("/restaurants/:id", async (req, res, next) => {
     if (!existing) {
       throw new AppError(404, "Restaurant not found");
     }
+
+    /** Manual approval: email verify na hua ho to bhi owner/staff INACTIVE → ACTIVE + tokens close */
+    if (
+      body.status === RestaurantStatus.ACTIVE &&
+      existing.status === RestaurantStatus.PENDING_VERIFICATION
+    ) {
+      const r = await prisma.$transaction(async (tx) => {
+        await tx.user.updateMany({
+          where: { restaurantId: id, status: UserStatus.INACTIVE },
+          data: { status: UserStatus.ACTIVE },
+        });
+        const userIds = await tx.user.findMany({
+          where: { restaurantId: id },
+          select: { id: true },
+        });
+        await tx.emailVerificationToken.updateMany({
+          where: { userId: { in: userIds.map((u) => u.id) }, usedAt: null },
+          data: { usedAt: new Date() },
+        });
+        return tx.restaurant.update({
+          where: { id },
+          data: { status: RestaurantStatus.ACTIVE },
+        });
+      });
+      await writeAudit(
+        req.user!.id,
+        "PLATFORM_RESTAURANT_VERIFY",
+        "Restaurant",
+        id,
+        { status: body.status, manualApproval: true },
+        null,
+      );
+      res.json(r);
+      return;
+    }
+
     const r = await prisma.restaurant.update({
       where: { id },
       data: { status: body.status },
