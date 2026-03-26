@@ -32,6 +32,17 @@ export type TableSummary = {
   status: string;
 };
 
+/** GET /tables/:walkInTableId/recent-tickets */
+export type WalkInTicketRow = {
+  id: string;
+  orderNumber: string;
+  status: string;
+  openedAt: string;
+  closedAt: string | null;
+  grandTotal: string;
+  lastInvoice: { paymentStatus: string; invoiceNumber: string } | null;
+};
+
 export type MenuItem = {
   id: string;
   name: string;

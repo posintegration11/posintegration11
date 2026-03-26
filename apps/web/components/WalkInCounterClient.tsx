@@ -6,7 +6,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "@/lib/api";
 import { getUser } from "@/lib/auth";
 import { getSocket } from "@/lib/socket";
-import type { OrderDetail, TableRow } from "@/lib/types";
+import type { OrderDetail, TableRow, WalkInTicketRow } from "@/lib/types";
 
 function formatDuration(openedAt: string | null) {
   if (!openedAt) return null;
@@ -17,12 +17,34 @@ function formatDuration(openedAt: string | null) {
   return `${h}h ${m % 60}m`;
 }
 
+function formatOpened(iso: string) {
+  try {
+    return new Date(iso).toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" });
+  } catch {
+    return iso;
+  }
+}
+
+function ticketState(row: WalkInTicketRow): { label: string; className: string } {
+  if (row.status === "CANCELLED") {
+    return { label: "Cancelled", className: "text-gray-500" };
+  }
+  if (row.status === "CLOSED" && row.lastInvoice?.paymentStatus === "PAID") {
+    return { label: "Paid", className: "text-emerald-400" };
+  }
+  if (row.status === "READY_FOR_BILLING") {
+    return { label: "Awaiting payment", className: "text-sky-300" };
+  }
+  return { label: "In progress", className: "text-amber-200" };
+}
+
 export function WalkInCounterClient() {
   const router = useRouter();
   const [tables, setTables] = useState<TableRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [openBusyId, setOpenBusyId] = useState<string | null>(null);
+  const [ticketsByTable, setTicketsByTable] = useState<Record<string, WalkInTicketRow[]>>({});
   const [, setNowTick] = useState(0);
 
   const load = useCallback(() => {
@@ -57,6 +79,29 @@ export function WalkInCounterClient() {
   }, []);
 
   const walkInTables = useMemo(() => tables.filter((t) => t.isWalkIn), [tables]);
+
+  useEffect(() => {
+    if (walkInTables.length === 0) {
+      setTicketsByTable({});
+      return;
+    }
+    let alive = true;
+    void Promise.all(
+      walkInTables.map((t) =>
+        api<WalkInTicketRow[]>(`/tables/${t.id}/recent-tickets`)
+          .then((rows) => ({ id: t.id, rows }))
+          .catch(() => ({ id: t.id, rows: [] as WalkInTicketRow[] })),
+      ),
+    ).then((pairs) => {
+      if (!alive) return;
+      const next: Record<string, WalkInTicketRow[]> = {};
+      for (const { id, rows } of pairs) next[id] = rows;
+      setTicketsByTable(next);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [walkInTables]);
 
   async function openCounter(t: TableRow) {
     setError(null);
@@ -203,6 +248,103 @@ export function WalkInCounterClient() {
           );
         })}
       </div>
+
+      {walkInTables.map((t) => {
+        const rows = ticketsByTable[t.id];
+        const role = getUser()?.role;
+        const canBill = role === "ADMIN" || role === "CASHIER";
+
+        if (rows === undefined) {
+          return (
+            <section key={`tickets-${t.id}`} className="space-y-2">
+              <h2 className="text-xs font-semibold uppercase tracking-wider text-[var(--muted)]">
+                Recent tickets · {t.name ?? "Walk-in"}
+              </h2>
+              <p className="text-xs text-[var(--muted)]">Loading ticket history…</p>
+            </section>
+          );
+        }
+
+        if (rows.length === 0) {
+          return (
+            <section key={`tickets-${t.id}`} className="space-y-2">
+              <h2 className="text-xs font-semibold uppercase tracking-wider text-[var(--muted)]">
+                Recent tickets · {t.name ?? "Walk-in"}
+              </h2>
+              <p className="text-xs text-[var(--muted)]">No tickets on this counter yet.</p>
+            </section>
+          );
+        }
+
+        return (
+          <section key={`tickets-${t.id}`} className="space-y-2">
+            <h2 className="text-xs font-semibold uppercase tracking-wider text-[var(--muted)]">
+              Recent tickets · {t.name ?? "Walk-in"}
+            </h2>
+            <p className="text-xs text-[var(--muted)]">
+              <span className="text-amber-200/90">In progress / awaiting payment</span> vs{" "}
+              <span className="text-emerald-400/90">Paid</span> (last 40 on this counter).
+            </p>
+            <div className="overflow-x-auto rounded-xl border border-[var(--border)] bg-[var(--surface)]/40">
+              <table className="w-full min-w-[520px] text-left text-sm">
+                <thead className="border-b border-[var(--border)] bg-[var(--bg)]/50 text-xs uppercase tracking-wide text-[var(--muted)]">
+                  <tr>
+                    <th className="px-3 py-2 font-semibold">Order</th>
+                    <th className="px-3 py-2 font-semibold">Status</th>
+                    <th className="px-3 py-2 text-right font-semibold">Total</th>
+                    <th className="px-3 py-2 font-semibold">Opened</th>
+                    <th className="px-3 py-2 font-semibold">Open</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((row) => {
+                    const st = ticketState(row);
+                    const isPaid = st.label === "Paid";
+                    const isClosed = row.status === "CLOSED";
+                    const orderHref = `/tables/${t.id}/order?orderId=${row.id}`;
+                    const billHref = `/billing/${row.id}`;
+
+                    let action: { href: string; label: string } | null = null;
+                    if (isPaid || row.status === "CANCELLED") {
+                      if (canBill && isPaid) action = { href: billHref, label: "Receipt" };
+                    } else if (row.status === "READY_FOR_BILLING") {
+                      action = canBill
+                        ? { href: billHref, label: "Bill" }
+                        : { href: orderHref, label: "Order" };
+                    } else if (!isClosed) {
+                      action = { href: orderHref, label: "Order" };
+                    } else if (canBill) {
+                      action = { href: billHref, label: "View" };
+                    }
+
+                    return (
+                      <tr key={row.id} className="border-b border-[var(--border)]/60 last:border-0">
+                        <td className="px-3 py-2 font-mono text-xs">{row.orderNumber}</td>
+                        <td className={`px-3 py-2 text-xs font-medium ${st.className}`}>{st.label}</td>
+                        <td className="px-3 py-2 text-right tabular-nums">₹{Number(row.grandTotal).toFixed(2)}</td>
+                        <td className="px-3 py-2 text-xs text-[var(--muted)]">{formatOpened(row.openedAt)}</td>
+                        <td className="px-3 py-2">
+                          {action ? (
+                            <Link
+                              href={action.href}
+                              prefetch
+                              className="text-xs font-semibold text-[var(--accent)] underline-offset-2 hover:underline"
+                            >
+                              {action.label}
+                            </Link>
+                          ) : (
+                            <span className="text-xs text-[var(--muted)]">—</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        );
+      })}
     </div>
   );
 }

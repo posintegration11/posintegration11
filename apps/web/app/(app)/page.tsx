@@ -20,6 +20,8 @@ type Overview = {
     grandTotal: string;
     paymentStatus: string;
     createdAt: string;
+    /** When payment was recorded (for “today” = your local calendar day). */
+    settledAt?: string;
     order: {
       id: string;
       table: { tableNumber: number; name?: string | null; isWalkIn?: boolean };
@@ -28,6 +30,13 @@ type Overview = {
 };
 
 type TopItemRow = { name: string; qty: number; revenue: number };
+
+function localCalendarDayQuery() {
+  const n = new Date();
+  const from = new Date(n.getFullYear(), n.getMonth(), n.getDate(), 0, 0, 0, 0);
+  const to = new Date(n.getFullYear(), n.getMonth(), n.getDate(), 23, 59, 59, 999);
+  return `from=${encodeURIComponent(from.toISOString())}&to=${encodeURIComponent(to.toISOString())}`;
+}
 
 function StatCard({
   label,
@@ -88,9 +97,12 @@ export default function DashboardPage() {
     setError(null);
     if (silent) setRefreshing(true);
     else setLoading(true);
+    const dayQ = localCalendarDayQuery();
     void Promise.all([
-      api<Overview>("/reports/overview"),
-      api<{ items: TopItemRow[] }>("/reports/top-items").catch(() => ({ items: [] as TopItemRow[] })),
+      api<Overview>(`/reports/overview?${dayQ}`),
+      api<{ items: TopItemRow[] }>(`/reports/top-items?${dayQ}`).catch(() => ({
+        items: [] as TopItemRow[],
+      })),
     ])
       .then(([overview, top]) => {
         setData(overview);
@@ -187,7 +199,8 @@ export default function DashboardPage() {
             Hello, {firstName}
           </h1>
           <p className="mt-1 max-w-xl text-sm text-[var(--muted)]">
-            Today at a glance — sales, open work, and latest invoices. Refreshes every 2 minutes.
+            Today uses your device&apos;s date. Sales and paid counts follow <strong className="text-[var(--text)]">payment</strong> time, not
+            invoice draft time. Refreshes every 2 minutes.
           </p>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2">
@@ -226,7 +239,7 @@ export default function DashboardPage() {
         <StatCard
           label="Sales today (paid)"
           value={`₹${data.salesToday.toFixed(2)}`}
-          hint="From settled invoices"
+          hint="Sum of payments taken today"
           accent="border-emerald-500/40 bg-emerald-950/25 shadow-emerald-950/20"
           icon={
             <svg className="size-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
@@ -237,7 +250,7 @@ export default function DashboardPage() {
         <StatCard
           label="Paid invoices"
           value={String(data.invoicesPaidToday)}
-          hint="Checked out today"
+          hint="Invoices settled today (by payment)"
           accent="border-sky-500/35 bg-sky-950/20 shadow-sky-950/15"
           icon={
             <svg className="size-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
@@ -259,7 +272,7 @@ export default function DashboardPage() {
         <StatCard
           label="Busy tables"
           value={String(data.occupiedTables)}
-          hint="Dine-in not FREE"
+          hint="Dine-in in use (walk-in counter excluded)"
           accent="border-violet-500/35 bg-violet-950/30 shadow-violet-950/20"
           icon={
             <svg className="size-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
@@ -272,12 +285,12 @@ export default function DashboardPage() {
       <div className="grid gap-8 lg:grid-cols-3">
         <section className="lg:col-span-2">
           <div className="mb-4 flex items-center justify-between gap-2">
-            <h2 className="text-lg font-semibold">Recent invoices</h2>
-            <span className="text-xs font-medium uppercase tracking-wide text-[var(--muted)]">Today</span>
+            <h2 className="text-lg font-semibold">Recent settled</h2>
+            <span className="text-xs font-medium uppercase tracking-wide text-[var(--muted)]">Paid today</span>
           </div>
           <div className="overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--surface)]/60 shadow-lg">
             {data.recentInvoices.length === 0 ? (
-              <p className="p-10 text-center text-sm text-[var(--muted)]">No invoices yet today.</p>
+              <p className="p-10 text-center text-sm text-[var(--muted)]">No payments recorded yet today.</p>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-sm">
@@ -287,7 +300,7 @@ export default function DashboardPage() {
                       <th className="px-4 py-3">Where</th>
                       <th className="px-4 py-3 text-right">Total</th>
                       <th className="px-4 py-3">Status</th>
-                      <th className="px-4 py-3 hidden sm:table-cell">Time</th>
+                      <th className="px-4 py-3 hidden sm:table-cell">Paid</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[var(--border)]">
@@ -320,7 +333,7 @@ export default function DashboardPage() {
                           </span>
                         </td>
                         <td className="px-4 py-3 text-[var(--muted)] hidden sm:table-cell">
-                          {new Date(inv.createdAt).toLocaleTimeString(undefined, {
+                          {new Date(inv.settledAt ?? inv.createdAt).toLocaleTimeString(undefined, {
                             hour: "2-digit",
                             minute: "2-digit",
                           })}
@@ -336,14 +349,14 @@ export default function DashboardPage() {
 
         <section>
           <div className="mb-4 flex items-center justify-between gap-2">
-            <h2 className="text-lg font-semibold">Top items today</h2>
+            <h2 className="text-lg font-semibold">Top items (paid today)</h2>
             <Link href="/reports" className="text-xs font-medium text-[var(--accent)] hover:underline">
               All reports
             </Link>
           </div>
           <div className="space-y-2 rounded-2xl border border-[var(--border)] bg-[var(--surface)]/60 p-4 shadow-lg">
             {!topItems || topItems.length === 0 ? (
-              <p className="py-6 text-center text-sm text-[var(--muted)]">No item sales today yet.</p>
+              <p className="py-6 text-center text-sm text-[var(--muted)]">No items on bills paid today yet.</p>
             ) : (
               <ul className="space-y-3">
                 {topItems.map((row, i) => (

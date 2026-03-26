@@ -14,28 +14,23 @@ const router = Router();
 router.use(authJwt);
 router.use(requireRole(UserRole.ADMIN, UserRole.CASHIER));
 
-router.get("/overview", async (_req, res, next) => {
+router.get("/overview", async (req, res, next) => {
   try {
-    const today = new Date();
-    const from = new Date(today);
-    from.setHours(0, 0, 0, 0);
-    const to = new Date(today);
-    to.setHours(23, 59, 59, 999);
+    const { from, to } = parseRange(req);
 
-    const [paidToday, paidCount, activeOrders, recentInvoices] = await Promise.all([
-      prisma.invoice.aggregate({
-        where: {
-          createdAt: { gte: from, lte: to },
-          paymentStatus: PaymentStatus.PAID,
-        },
-        _sum: { grandTotal: true },
-      }),
-      prisma.invoice.count({
-        where: {
-          createdAt: { gte: from, lte: to },
-          paymentStatus: PaymentStatus.PAID,
-        },
-      }),
+    const paymentTotals = prisma.payment.aggregate({
+      where: { paidAt: { gte: from, lte: to } },
+      _sum: { amount: true },
+    });
+
+    const settledInvoiceGroups = prisma.payment.groupBy({
+      by: ["invoiceId"],
+      where: { paidAt: { gte: from, lte: to } },
+    });
+
+    const [paySum, invoiceIdGroups, activeOrders, paymentRows, busyDineIn] = await Promise.all([
+      paymentTotals,
+      settledInvoiceGroups,
       prisma.order.count({
         where: {
           status: {
@@ -48,23 +43,59 @@ router.get("/overview", async (_req, res, next) => {
           },
         },
       }),
-      prisma.invoice.findMany({
-        where: { createdAt: { gte: from, lte: to } },
-        orderBy: { createdAt: "desc" },
-        take: 8,
-        include: { order: { include: { table: true } } },
+      prisma.payment.findMany({
+        where: { paidAt: { gte: from, lte: to } },
+        orderBy: { paidAt: "desc" },
+        take: 48,
+        include: {
+          invoice: {
+            include: { order: { include: { table: true } } },
+          },
+        },
+      }),
+      prisma.restaurantTable.count({
+        where: {
+          isWalkIn: false,
+          status: { not: RestaurantTableStatus.FREE },
+        },
       }),
     ]);
 
-    const occupiedTables = await prisma.restaurantTable.count({
-      where: { status: { not: RestaurantTableStatus.FREE } },
-    });
+    const seenInvoice = new Set<string>();
+    const recentInvoices: unknown[] = [];
+    for (const p of paymentRows) {
+      const inv = p.invoice;
+      if (!inv || inv.paymentStatus !== PaymentStatus.PAID) continue;
+      if (seenInvoice.has(inv.id)) continue;
+      seenInvoice.add(inv.id);
+      recentInvoices.push({
+        id: inv.id,
+        invoiceNumber: inv.invoiceNumber,
+        subtotal: String(inv.subtotal),
+        taxTotal: String(inv.taxTotal),
+        discountTotal: String(inv.discountTotal),
+        grandTotal: String(inv.grandTotal),
+        paymentStatus: inv.paymentStatus,
+        paymentMode: inv.paymentMode,
+        createdAt: inv.createdAt.toISOString(),
+        settledAt: p.paidAt.toISOString(),
+        order: {
+          id: inv.order.id,
+          table: {
+            tableNumber: inv.order.table.tableNumber,
+            name: inv.order.table.name,
+            isWalkIn: inv.order.table.isWalkIn,
+          },
+        },
+      });
+      if (recentInvoices.length >= 8) break;
+    }
 
     res.json({
-      salesToday: Number(paidToday._sum.grandTotal ?? 0),
-      invoicesPaidToday: paidCount,
+      salesToday: Number(paySum._sum.amount ?? 0),
+      invoicesPaidToday: invoiceIdGroups.length,
       activeOrders,
-      occupiedTables,
+      occupiedTables: busyDineIn,
       recentInvoices,
     });
   } catch (e) {
@@ -72,10 +103,26 @@ router.get("/overview", async (_req, res, next) => {
   }
 });
 
+/**
+ * Date range for reports. If `from`/`to` query params are full ISO datetimes (browser local day),
+ * uses them as-is. Otherwise falls back to calendar start/end of those dates in server local time.
+ */
 function parseRange(req: { query: Record<string, unknown> }) {
   const today = new Date();
-  let from = req.query.from ? new Date(String(req.query.from)) : new Date(today);
-  let to = req.query.to ? new Date(String(req.query.to)) : new Date(today);
+  const fromQ = req.query.from ? String(req.query.from) : "";
+  const toQ = req.query.to ? String(req.query.to) : "";
+  if (fromQ && toQ) {
+    const fromIso = new Date(fromQ);
+    const toIso = new Date(toQ);
+    if (!Number.isNaN(fromIso.getTime()) && !Number.isNaN(toIso.getTime())) {
+      if (/T/i.test(fromQ) && /T/i.test(toQ)) {
+        return { from: fromIso, to: toIso };
+      }
+    }
+  }
+
+  let from = fromQ ? new Date(fromQ) : new Date(today);
+  let to = toQ ? new Date(toQ) : new Date(today);
   if (Number.isNaN(from.getTime())) from = new Date(today);
   if (Number.isNaN(to.getTime())) to = new Date(today);
   from.setHours(0, 0, 0, 0);
@@ -136,9 +183,23 @@ router.get("/payment-summary", async (req, res, next) => {
 router.get("/top-items", async (req, res, next) => {
   try {
     const { from, to } = parseRange(req);
+    const payments = await prisma.payment.findMany({
+      where: { paidAt: { gte: from, lte: to } },
+      select: { invoiceId: true },
+    });
+    const invoiceIds = [...new Set(payments.map((p) => p.invoiceId))];
+    if (invoiceIds.length === 0) {
+      res.json({ from, to, items: [] });
+      return;
+    }
+    const invoices = await prisma.invoice.findMany({
+      where: { id: { in: invoiceIds } },
+      select: { orderId: true },
+    });
+    const orderIds = [...new Set(invoices.map((i) => i.orderId))];
     const items = await prisma.orderItem.findMany({
       where: {
-        order: { openedAt: { gte: from, lte: to } },
+        orderId: { in: orderIds },
         status: { not: OrderItemStatus.CANCELLED },
       },
     });

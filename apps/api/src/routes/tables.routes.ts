@@ -200,6 +200,58 @@ router.get("/:tableId/active-order", requireRole(...tableOrderRoles), async (req
   }
 });
 
+/** Last tickets for a walk-in counter only — for POS walk-in hub (pending vs paid). */
+router.get("/:tableId/recent-tickets", requireRole(...tableOrderRoles), async (req, res, next) => {
+  try {
+    const { tableId } = req.params;
+    const table = await prisma.restaurantTable.findUnique({ where: { id: tableId } });
+    if (!table) {
+      throw new AppError(404, "Table not found");
+    }
+    if (!table.isWalkIn) {
+      throw new AppError(400, "Recent tickets are only available for walk-in counters");
+    }
+
+    const orders = await prisma.order.findMany({
+      where: { tableId },
+      orderBy: { openedAt: "desc" },
+      take: 40,
+      select: {
+        id: true,
+        orderNumber: true,
+        status: true,
+        openedAt: true,
+        closedAt: true,
+        grandTotal: true,
+        invoices: {
+          orderBy: { createdAt: "desc" },
+          take: 1,
+          select: { paymentStatus: true, invoiceNumber: true },
+        },
+      },
+    });
+
+    const payload = orders.map((o) => ({
+      id: o.id,
+      orderNumber: o.orderNumber,
+      status: o.status,
+      openedAt: o.openedAt.toISOString(),
+      closedAt: o.closedAt?.toISOString() ?? null,
+      grandTotal: String(o.grandTotal),
+      lastInvoice: o.invoices[0]
+        ? {
+            paymentStatus: o.invoices[0].paymentStatus,
+            invoiceNumber: o.invoices[0].invoiceNumber,
+          }
+        : null,
+    }));
+
+    res.json(payload);
+  } catch (e) {
+    next(e);
+  }
+});
+
 const patchSchema = z.object({
   name: z.string().optional(),
   capacity: z.number().int().positive().optional(),

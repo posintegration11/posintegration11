@@ -128,12 +128,47 @@ export function BillingClient({ orderId }: { orderId: string }) {
   }
 
   if (order.status !== "READY_FOR_BILLING" && order.status !== "CLOSED") {
+    const isWalkIn = Boolean(order.table?.isWalkIn || order.table?.tableNumber === 0);
+    const statusWords = order.status.replace(/_/g, " ").toLowerCase();
+    const backHub = isWalkIn ? "/walk-in" : "/tables";
+    const backHubLabel = isWalkIn ? "Walk-in" : "Tables";
+    const orderHref = `/tables/${order.tableId}/order?orderId=${order.id}`;
+
     return (
-      <div className="space-y-4">
-        <p>Order must be in Ready for billing. Current: {order.status}</p>
-        <Link href="/tables" className="text-[var(--accent)] underline">
-          Back to tables
-        </Link>
+      <div className="max-w-lg space-y-4 rounded-xl border border-amber-500/35 bg-amber-950/20 p-5">
+        <h1 className="text-lg font-semibold text-[var(--text)]">Not ready for billing yet</h1>
+        <p className="text-sm leading-relaxed text-[var(--muted)]">
+          The register can only print and settle invoices when the order is marked{" "}
+          <strong className="text-[var(--text)]">Ready for billing</strong>. This ticket is still{" "}
+          <strong className="text-[var(--text)] capitalize">{statusWords}</strong>.
+          {isWalkIn ? (
+            <>
+              {" "}
+              On the order screen, finish lines, send to kitchen if needed, then tap{" "}
+              <strong className="text-[var(--text)]">Ready for billing</strong>.
+            </>
+          ) : (
+            <>
+              {" "}
+              Open the table order and use <strong className="text-[var(--text)]">Ready for billing</strong> when the
+              guest is ready to pay.
+            </>
+          )}
+        </p>
+        <div className="flex flex-wrap gap-3 pt-1">
+          <Link
+            href={orderHref}
+            className="inline-flex rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white transition hover:brightness-110"
+          >
+            Back to order
+          </Link>
+          <Link
+            href={backHub}
+            className="inline-flex rounded-lg border border-[var(--border)] bg-[var(--surface)] px-4 py-2 text-sm font-medium text-[var(--text)] transition hover:border-[var(--accent)]/50"
+          >
+            {backHubLabel}
+          </Link>
+        </div>
       </div>
     );
   }
