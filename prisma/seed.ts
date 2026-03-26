@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import {
   PrismaClient,
   RestaurantStatus,
@@ -11,6 +13,18 @@ import bcrypt from "bcryptjs";
 const prisma = new PrismaClient();
 
 const LEGACY_RESTAURANT_ID = "a0000000-0000-0000-0000-000000000001";
+
+type HandwrittenJsonItem = { name: string; price?: number; half?: number; full?: number };
+type HandwrittenJsonCategory = { name: string; sortOrder: number; items: HandwrittenJsonItem[] };
+type HandwrittenMenuFile = { categories: HandwrittenJsonCategory[] };
+
+function expandHandwrittenItem(i: HandwrittenJsonItem): { name: string; price: string }[] {
+  const rows: { name: string; price: string }[] = [];
+  if (i.price != null) rows.push({ name: i.name, price: Number(i.price).toFixed(2) });
+  if (i.half != null) rows.push({ name: `${i.name} (Half)`, price: Number(i.half).toFixed(2) });
+  if (i.full != null) rows.push({ name: `${i.name} (Full)`, price: Number(i.full).toFixed(2) });
+  return rows;
+}
 
 async function main() {
   const passwordHash = await bcrypt.hash("password123", 10);
@@ -116,66 +130,50 @@ async function main() {
     });
   }
 
-  const categories = [
-    { name: "Starters", sortOrder: 0 },
-    { name: "Main Course", sortOrder: 1 },
-    { name: "Beverages", sortOrder: 2 },
-    { name: "Desserts", sortOrder: 3 },
-  ];
+  const menuPath = join(process.cwd(), "prisma/data/handwritten-menu-extracted.json");
+  const handwritten = JSON.parse(readFileSync(menuPath, "utf8")) as HandwrittenMenuFile;
 
-  const catRecords: { id: string; name: string }[] = [];
-  for (const c of categories) {
-    const existing = await prisma.menuCategory.findFirst({
-      where: { name: c.name, restaurantId: LEGACY_RESTAURANT_ID },
+  for (const cat of handwritten.categories) {
+    let row = await prisma.menuCategory.findFirst({
+      where: { name: cat.name, restaurantId: LEGACY_RESTAURANT_ID },
     });
-    const row =
-      existing ??
+    row =
+      row ??
       (await prisma.menuCategory.create({
         data: {
           restaurantId: LEGACY_RESTAURANT_ID,
-          name: c.name,
-          sortOrder: c.sortOrder,
+          name: cat.name,
+          sortOrder: cat.sortOrder,
           status: CategoryStatus.ACTIVE,
         },
       }));
-    catRecords.push({ id: row.id, name: row.name });
-  }
-
-  const byName = Object.fromEntries(catRecords.map((x) => [x.name, x.id]));
-
-  const items: { cat: string; name: string; price: string; desc?: string }[] = [
-    { cat: "Starters", name: "Spring Rolls", price: "120.00", desc: "Crispy veg rolls" },
-    { cat: "Starters", name: "Soup of the Day", price: "90.00" },
-    { cat: "Main Course", name: "Grilled Chicken", price: "350.00" },
-    { cat: "Main Course", name: "Paneer Tikka", price: "280.00" },
-    { cat: "Main Course", name: "Fish Curry", price: "320.00" },
-    { cat: "Beverages", name: "Fresh Lime Soda", price: "60.00" },
-    { cat: "Beverages", name: "Masala Chai", price: "40.00" },
-    { cat: "Beverages", name: "Cold Coffee", price: "110.00" },
-    { cat: "Desserts", name: "Ice Cream", price: "80.00" },
-    { cat: "Desserts", name: "Gulab Jamun", price: "70.00" },
-  ];
-
-  for (const it of items) {
-    const categoryId = byName[it.cat];
-    const found = await prisma.menuItem.findFirst({
-      where: { categoryId, name: it.name },
-    });
-    if (!found) {
-      await prisma.menuItem.create({
-        data: {
-          categoryId,
-          name: it.name,
-          description: it.desc ?? null,
-          price: it.price,
-          isAvailable: true,
-        },
+    if (row.sortOrder !== cat.sortOrder) {
+      await prisma.menuCategory.update({
+        where: { id: row.id },
+        data: { sortOrder: cat.sortOrder },
       });
+    }
+
+    for (const item of cat.items) {
+      for (const expanded of expandHandwrittenItem(item)) {
+        const exists = await prisma.menuItem.findFirst({
+          where: { categoryId: row.id, name: expanded.name },
+        });
+        if (exists) continue;
+        await prisma.menuItem.create({
+          data: {
+            categoryId: row.id,
+            name: expanded.name,
+            price: expanded.price,
+            isAvailable: true,
+          },
+        });
+      }
     }
   }
 
   console.log(
-    "Seed completed.\n  Tenant: admin@pos.local / password123 (same for staff)\n  Platform: " +
+    "Seed completed.\n  Menu: prisma/data/handwritten-menu-extracted.json (Half/Full = separate lines)\n  Tenant: admin@pos.local / password123 (same for staff)\n  Platform: " +
       platformEmail +
       " / password123",
   );
