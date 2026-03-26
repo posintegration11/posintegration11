@@ -38,6 +38,58 @@ function ticketState(row: WalkInTicketRow): { label: string; className: string }
   return { label: "In progress", className: "text-amber-200" };
 }
 
+/** If the table has an active order that recent-tickets missed, surface it as a row. */
+function mergeActiveTicket(t: TableRow, rows: WalkInTicketRow[]): WalkInTicketRow[] {
+  if (!t.activeOrderId || rows.some((r) => r.id === t.activeOrderId)) return rows;
+  const status = t.status === "BILLING_PENDING" ? "READY_FOR_BILLING" : "RUNNING";
+  const synthetic: WalkInTicketRow = {
+    id: t.activeOrderId,
+    orderNumber: `·${t.activeOrderId.slice(-6).toUpperCase()}`,
+    status,
+    openedAt: t.openedAt ?? new Date().toISOString(),
+    closedAt: null,
+    grandTotal: String(t.activeTotal ?? 0),
+    lastInvoice: null,
+  };
+  return [synthetic, ...rows];
+}
+
+function isOpenTicket(r: WalkInTicketRow): boolean {
+  if (r.status === "CANCELLED") return false;
+  if (r.status === "CLOSED" && r.lastInvoice?.paymentStatus === "PAID") return false;
+  return true;
+}
+
+function ticketPrimaryAction(
+  t: TableRow,
+  row: WalkInTicketRow,
+  canBill: boolean,
+): { href: string; label: string } | null {
+  const st = ticketState(row);
+  const isPaid = st.label === "Paid";
+  const isClosed = row.status === "CLOSED";
+  const orderHref = `/tables/${t.id}/order?orderId=${row.id}`;
+  const billHref = `/billing/${row.id}`;
+
+  if (isPaid) return canBill ? { href: billHref, label: "Receipt" } : null;
+  if (row.status === "CANCELLED") return null;
+  if (row.status === "READY_FOR_BILLING") {
+    return canBill ? { href: billHref, label: "Continue billing" } : { href: orderHref, label: "Continue order" };
+  }
+  if (!isClosed) return { href: orderHref, label: "Continue order" };
+  if (canBill) return { href: billHref, label: "View" };
+  return null;
+}
+
+function ticketCardBorder(row: WalkInTicketRow): string {
+  if (row.status === "CANCELLED") return "border-gray-600/40";
+  if (row.status === "READY_FOR_BILLING") return "border-sky-500/35";
+  if (row.status === "CLOSED" && row.lastInvoice?.paymentStatus === "PAID") {
+    return "border-emerald-600/30";
+  }
+  return "border-amber-500/35";
+}
+
 export function WalkInCounterClient() {
   const router = useRouter();
   const [tables, setTables] = useState<TableRow[]>([]);
@@ -49,8 +101,8 @@ export function WalkInCounterClient() {
 
   const load = useCallback(() => {
     void api<TableRow[]>("/tables")
-      .then((rows) => {
-        setTables(rows);
+      .then((r) => {
+        setTables(r);
         setError(null);
       })
       .catch(() => setError("Could not load counter"))
@@ -74,11 +126,11 @@ export function WalkInCounterClient() {
   }, [load]);
 
   useEffect(() => {
-    const id = window.setInterval(() => setNowTick((t) => t + 1), 30_000);
+    const id = window.setInterval(() => setNowTick((tick) => tick + 1), 30_000);
     return () => window.clearInterval(id);
   }, []);
 
-  const walkInTables = useMemo(() => tables.filter((t) => t.isWalkIn), [tables]);
+  const walkInTables = useMemo(() => tables.filter((x) => x.isWalkIn), [tables]);
 
   useEffect(() => {
     if (walkInTables.length === 0) {
@@ -116,15 +168,6 @@ export function WalkInCounterClient() {
     }
   }
 
-  function continueHref(t: TableRow): string | null {
-    if (!t.activeOrderId) return null;
-    const role = getUser()?.role;
-    const billFirst =
-      (role === "CASHIER" || role === "ADMIN") && t.status === "BILLING_PENDING" && t.activeOrderId;
-    if (billFirst) return `/billing/${t.activeOrderId}`;
-    return `/tables/${t.id}/order?orderId=${t.activeOrderId}`;
-  }
-
   if (loading && tables.length === 0) {
     return <p className="text-[var(--muted)]">Loading…</p>;
   }
@@ -143,8 +186,7 @@ export function WalkInCounterClient() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Walk-in</h1>
           <p className="text-sm text-[var(--muted)]">
-            Continue the open ticket (totals stay with the order). Start a new one only after billing or closing the
-            current order.
+            Open tickets appear below with actions. Start a new order only after the current one is billed or closed.
           </p>
         </div>
         <button
@@ -165,12 +207,8 @@ export function WalkInCounterClient() {
 
       <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap">
         {walkInTables.map((t) => {
-          const role = getUser()?.role;
           const busy = openBusyId === t.id;
-          const href = continueHref(t);
-          const hasActive = Boolean(t.activeOrderId && href);
-          const continueBilling =
-            t.status === "BILLING_PENDING" && (role === "CASHIER" || role === "ADMIN");
+          const hasActive = Boolean(t.activeOrderId);
 
           return (
             <div
@@ -213,25 +251,14 @@ export function WalkInCounterClient() {
                   )}
                 </div>
                 <div className="flex shrink-0 flex-col gap-2 sm:items-end">
-                  {hasActive && href ? (
-                    <Link
-                      href={href}
-                      prefetch
-                      className="inline-flex touch-manipulation items-center justify-center rounded-xl bg-violet-500 px-6 py-3.5 text-center text-sm font-semibold text-white shadow-md shadow-violet-900/40 transition hover:brightness-110 active:scale-[0.98]"
-                    >
-                      {continueBilling ? "Continue billing" : "Continue order"}
-                    </Link>
-                  ) : null}
                   <button
                     type="button"
                     disabled={busy || loading || hasActive}
                     title={
-                      hasActive
-                        ? "Bill or close the current ticket first"
-                        : "Start a new walk-in order"
+                      hasActive ? "Bill or close the current ticket first (see cards below)" : "Start a new walk-in order"
                     }
                     onClick={() => void openCounter(t)}
-                    className="inline-flex touch-manipulation items-center justify-center rounded-xl border border-violet-500/50 bg-violet-950/30 px-6 py-3 text-center text-sm font-semibold text-violet-100 transition hover:bg-violet-950/50 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="inline-flex touch-manipulation items-center justify-center rounded-xl bg-violet-500 px-6 py-3.5 text-center text-sm font-semibold text-white shadow-md shadow-violet-900/40 transition hover:brightness-110 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:brightness-100"
                   >
                     {busy ? (
                       <span className="inline-flex items-center gap-2">
@@ -250,98 +277,136 @@ export function WalkInCounterClient() {
       </div>
 
       {walkInTables.map((t) => {
-        const rows = ticketsByTable[t.id];
+        const rawRows = ticketsByTable[t.id];
         const role = getUser()?.role;
         const canBill = role === "ADMIN" || role === "CASHIER";
 
-        if (rows === undefined) {
+        if (rawRows === undefined) {
           return (
             <section key={`tickets-${t.id}`} className="space-y-2">
               <h2 className="text-xs font-semibold uppercase tracking-wider text-[var(--muted)]">
-                Recent tickets · {t.name ?? "Walk-in"}
+                Tickets · {t.name ?? "Walk-in"}
               </h2>
-              <p className="text-xs text-[var(--muted)]">Loading ticket history…</p>
+              <p className="text-xs text-[var(--muted)]">Loading…</p>
             </section>
           );
         }
 
-        if (rows.length === 0) {
-          return (
-            <section key={`tickets-${t.id}`} className="space-y-2">
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-[var(--muted)]">
-                Recent tickets · {t.name ?? "Walk-in"}
-              </h2>
-              <p className="text-xs text-[var(--muted)]">No tickets on this counter yet.</p>
-            </section>
-          );
-        }
+        const rows = mergeActiveTicket(t, rawRows);
+        const sorted = [...rows].sort(
+          (a, b) => new Date(b.openedAt).getTime() - new Date(a.openedAt).getTime(),
+        );
+        const openRows = sorted.filter(isOpenTicket);
+        const doneRows = sorted.filter((r) => !isOpenTicket(r));
 
         return (
-          <section key={`tickets-${t.id}`} className="space-y-2">
+          <section key={`tickets-${t.id}`} className="space-y-3">
             <h2 className="text-xs font-semibold uppercase tracking-wider text-[var(--muted)]">
-              Recent tickets · {t.name ?? "Walk-in"}
+              Tickets · {t.name ?? "Walk-in"}
             </h2>
             <p className="text-xs text-[var(--muted)]">
-              <span className="text-amber-200/90">In progress / awaiting payment</span> vs{" "}
-              <span className="text-emerald-400/90">Paid</span> (last 40 on this counter).
+              <span className="text-amber-200/90">In progress</span> /{" "}
+              <span className="text-sky-300/90">Awaiting payment</span> — use the buttons on each card. Completed sales
+              are listed below.
             </p>
-            <div className="overflow-x-auto rounded-xl border border-[var(--border)] bg-[var(--surface)]/40">
-              <table className="w-full min-w-[520px] text-left text-sm">
-                <thead className="border-b border-[var(--border)] bg-[var(--bg)]/50 text-xs uppercase tracking-wide text-[var(--muted)]">
-                  <tr>
-                    <th className="px-3 py-2 font-semibold">Order</th>
-                    <th className="px-3 py-2 font-semibold">Status</th>
-                    <th className="px-3 py-2 text-right font-semibold">Total</th>
-                    <th className="px-3 py-2 font-semibold">Opened</th>
-                    <th className="px-3 py-2 font-semibold">Open</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((row) => {
-                    const st = ticketState(row);
-                    const isPaid = st.label === "Paid";
-                    const isClosed = row.status === "CLOSED";
-                    const orderHref = `/tables/${t.id}/order?orderId=${row.id}`;
-                    const billHref = `/billing/${row.id}`;
 
-                    let action: { href: string; label: string } | null = null;
-                    if (isPaid || row.status === "CANCELLED") {
-                      if (canBill && isPaid) action = { href: billHref, label: "Receipt" };
-                    } else if (row.status === "READY_FOR_BILLING") {
-                      action = canBill
-                        ? { href: billHref, label: "Bill" }
-                        : { href: orderHref, label: "Order" };
-                    } else if (!isClosed) {
-                      action = { href: orderHref, label: "Order" };
-                    } else if (canBill) {
-                      action = { href: billHref, label: "View" };
-                    }
-
-                    return (
-                      <tr key={row.id} className="border-b border-[var(--border)]/60 last:border-0">
-                        <td className="px-3 py-2 font-mono text-xs">{row.orderNumber}</td>
-                        <td className={`px-3 py-2 text-xs font-medium ${st.className}`}>{st.label}</td>
-                        <td className="px-3 py-2 text-right tabular-nums">₹{Number(row.grandTotal).toFixed(2)}</td>
-                        <td className="px-3 py-2 text-xs text-[var(--muted)]">{formatOpened(row.openedAt)}</td>
-                        <td className="px-3 py-2">
+            {openRows.length === 0 ? (
+              <p className="rounded-xl border border-dashed border-[var(--border)] bg-[var(--surface)]/30 px-4 py-6 text-center text-sm text-[var(--muted)]">
+                No open tickets on this counter. Tap <span className="text-[var(--text)]">Start walk-in order</span>{" "}
+                above when you are ready.
+              </p>
+            ) : (
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {openRows.map((row) => {
+                  const st = ticketState(row);
+                  const action = ticketPrimaryAction(t, row, canBill);
+                  const dur = formatDuration(row.openedAt);
+                  return (
+                    <div
+                      key={row.id}
+                      className={`relative overflow-hidden rounded-2xl border-2 bg-gradient-to-br from-[var(--surface)] to-[var(--bg)] p-4 shadow-md transition hover:-translate-y-0.5 hover:shadow-lg ${ticketCardBorder(row)}`}
+                    >
+                      <div className="flex flex-col gap-3 sm:min-h-[140px] sm:flex-row sm:items-start sm:justify-between">
+                        <div className="min-w-0 space-y-1">
+                          <div className="flex flex-wrap items-baseline gap-2">
+                            <span className="font-mono text-sm font-semibold text-[var(--text)]">{row.orderNumber}</span>
+                            <span className={`text-xs font-medium ${st.className}`}>{st.label}</span>
+                          </div>
+                          <p className="text-lg font-semibold tabular-nums text-[var(--text)]">
+                            ₹{Number(row.grandTotal).toFixed(2)}
+                          </p>
+                          <p className="text-xs text-[var(--muted)]">
+                            Opened {formatOpened(row.openedAt)}
+                            {dur ? ` · ${dur} ago` : ""}
+                          </p>
+                        </div>
+                        <div className="flex shrink-0 flex-col gap-2 sm:items-end">
                           {action ? (
                             <Link
                               href={action.href}
                               prefetch
-                              className="text-xs font-semibold text-[var(--accent)] underline-offset-2 hover:underline"
+                              className="inline-flex touch-manipulation items-center justify-center rounded-xl bg-violet-500 px-5 py-3 text-center text-sm font-semibold text-white shadow-md shadow-violet-900/40 transition hover:brightness-110 active:scale-[0.98]"
                             >
                               {action.label}
                             </Link>
                           ) : (
-                            <span className="text-xs text-[var(--muted)]">—</span>
+                            <span className="text-xs text-[var(--muted)]">No action</span>
                           )}
-                        </td>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {doneRows.length > 0 ? (
+              <div className="space-y-2 pt-2">
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--muted)]">
+                  Completed · last {doneRows.length} on this counter
+                </h3>
+                <div className="overflow-x-auto rounded-xl border border-[var(--border)] bg-[var(--surface)]/40">
+                  <table className="w-full min-w-[480px] text-left text-sm">
+                    <thead className="border-b border-[var(--border)] bg-[var(--bg)]/50 text-xs uppercase tracking-wide text-[var(--muted)]">
+                      <tr>
+                        <th className="px-3 py-2 font-semibold">Order</th>
+                        <th className="px-3 py-2 font-semibold">Status</th>
+                        <th className="px-3 py-2 text-right font-semibold">Total</th>
+                        <th className="px-3 py-2 font-semibold">Opened</th>
+                        <th className="px-3 py-2 font-semibold">Receipt</th>
                       </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                    </thead>
+                    <tbody>
+                      {doneRows.map((row) => {
+                        const st = ticketState(row);
+                        const billHref = `/billing/${row.id}`;
+                        return (
+                          <tr key={row.id} className="border-b border-[var(--border)]/60 last:border-0">
+                            <td className="px-3 py-2 font-mono text-xs">{row.orderNumber}</td>
+                            <td className={`px-3 py-2 text-xs font-medium ${st.className}`}>{st.label}</td>
+                            <td className="px-3 py-2 text-right tabular-nums">₹{Number(row.grandTotal).toFixed(2)}</td>
+                            <td className="px-3 py-2 text-xs text-[var(--muted)]">{formatOpened(row.openedAt)}</td>
+                            <td className="px-3 py-2">
+                              {canBill && st.label === "Paid" ? (
+                                <Link
+                                  href={billHref}
+                                  prefetch
+                                  className="text-xs font-semibold text-[var(--accent)] underline-offset-2 hover:underline"
+                                >
+                                  Open
+                                </Link>
+                              ) : (
+                                <span className="text-xs text-[var(--muted)]">—</span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ) : null}
           </section>
         );
       })}
