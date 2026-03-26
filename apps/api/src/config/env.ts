@@ -21,6 +21,14 @@ const schema = z.object({
     (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
     z.string().email().optional().default("noreply@example.com"),
   ),
+  /**
+   * If SMTP_HOST is unset and this is true, POST /auth/register-tenant includes `verifyUrl` in JSON (testing only).
+   * Never enable on a public production API — use real SMTP instead.
+   */
+  EXPOSE_VERIFY_LINK_WITHOUT_SMTP: z
+    .string()
+    .optional()
+    .transform((v) => v === "true" || v === "1"),
 });
 
 export type Env = z.infer<typeof schema>;

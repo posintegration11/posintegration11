@@ -179,10 +179,14 @@ router.post("/register-tenant", async (req, res, next) => {
     const verifyUrl = `${base}/verify-email?token=${encodeURIComponent(rawToken)}`;
     await sendVerificationEmail(body.email.toLowerCase().trim(), verifyUrl);
 
+    const exposeLink = !env.SMTP_HOST && env.EXPOSE_VERIFY_LINK_WITHOUT_SMTP;
     res.status(201).json({
       ok: true,
-      message: "Check your email to verify and activate your account.",
+      message: exposeLink
+        ? "SMTP not configured — verifyUrl included for testing only."
+        : "Check your email to verify and activate your account.",
       userId,
+      ...(exposeLink ? { verifyUrl } : {}),
     });
   } catch (e) {
     next(e);

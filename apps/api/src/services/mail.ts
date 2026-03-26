@@ -8,7 +8,11 @@ export async function sendVerificationEmail(to: string, verifyUrl: string): Prom
   const html = `<p>Welcome!</p><p><a href="${verifyUrl}">Verify your email</a> to activate your POS account.</p><p>If you did not sign up, ignore this email.</p>`;
 
   if (!env.SMTP_HOST) {
-    console.info(`[mail:dev] To: ${to}\nSubject: ${subject}\n${verifyUrl}`);
+    console.warn(
+      "[mail:no-smtp] SMTP_HOST is not set — no email was sent. " +
+        "Set SMTP_HOST (+ SMTP_USER/SMTP_PASS) on your host (e.g. Render env) or check logs for the link below.\n" +
+        `To: ${to}\nSubject: ${subject}\nLink: ${verifyUrl}`,
+    );
     return;
   }
 
@@ -48,7 +52,7 @@ export async function sendDemoRequestNotification(
     .join("\n");
 
   if (!env.SMTP_HOST) {
-    console.info(`[mail:dev] Demo request to ${adminEmails.join(", ")}\n${text}`);
+    console.warn(`[mail:no-smtp] Demo notification not emailed. Admins: ${adminEmails.join(", ")}\n${text}`);
     return;
   }
 
