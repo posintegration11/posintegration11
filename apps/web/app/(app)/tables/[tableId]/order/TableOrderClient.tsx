@@ -44,6 +44,7 @@ export function TableOrderClient({ tableId }: { tableId: string }) {
   const [walkInWithoutOrder, setWalkInWithoutOrder] = useState(false);
   const [startWalkInBusy, setStartWalkInBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  const [tableSummary, setTableSummary] = useState<TableSummary | null>(null);
 
   const role = getUser()?.role ?? "";
   const orderIdRef = useRef<string | null>(null);
@@ -88,6 +89,12 @@ export function TableOrderClient({ tableId }: { tableId: string }) {
       if (c[0]) setCatId(c[0].id);
     });
   }, []);
+
+  useEffect(() => {
+    void api<TableSummary>(`/tables/${tableId}/summary`)
+      .then(setTableSummary)
+      .catch(() => setTableSummary(null));
+  }, [tableId]);
 
   useEffect(() => {
     const q = new URLSearchParams();
@@ -160,6 +167,9 @@ export function TableOrderClient({ tableId }: { tableId: string }) {
   }, [order]);
 
   const isWalkInOrder = Boolean(order?.table?.isWalkIn || order?.table?.tableNumber === 0);
+
+  const hubHref = isWalkInOrder || tableSummary?.isWalkIn || tableSummary?.tableNumber === 0 ? "/walk-in" : "/tables";
+  const hubLabel = hubHref === "/walk-in" ? "← Walk-in" : "← Tables";
 
   async function addItem(menuItemId: string) {
     const oid = order?.id;
@@ -344,10 +354,10 @@ export function TableOrderClient({ tableId }: { tableId: string }) {
     return (
       <div className="space-y-4">
         <Link
-          href="/tables"
+          href={hubHref}
           className="inline-flex text-sm text-[var(--muted)] transition hover:text-[var(--text)]"
         >
-          ← Tables
+          {hubLabel}
         </Link>
         <OrderPageSkeleton />
       </div>
@@ -409,22 +419,22 @@ export function TableOrderClient({ tableId }: { tableId: string }) {
     return (
       <div className="space-y-3">
         <p className="text-[var(--muted)]">Could not load an order for this table.</p>
-        <Link href="/tables" className="text-sm text-[var(--accent)] hover:underline">
-          ← Back to tables
+        <Link href={hubHref} className="text-sm text-[var(--accent)] hover:underline">
+          {hubHref === "/walk-in" ? "← Back to Walk-in" : "← Back to tables"}
         </Link>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col gap-6 pb-8 lg:flex-row">
+    <div className="flex flex-col-reverse gap-6 pb-8 lg:flex-row">
       <div className="flex-1 space-y-4">
         <div className="flex flex-wrap items-center gap-3">
           <Link
-            href="/tables"
+            href={hubHref}
             className="text-sm text-[var(--muted)] transition hover:text-[var(--text)]"
           >
-            ← Tables
+            {hubLabel}
           </Link>
           <h1 className="text-2xl font-semibold tracking-tight">
             {isWalkInOrder ? "Walk-in" : `Table ${order.table?.tableNumber ?? "?"}`}
@@ -494,8 +504,8 @@ export function TableOrderClient({ tableId }: { tableId: string }) {
         </div>
       </div>
 
-      <aside className="w-full shrink-0 space-y-4 lg:w-96">
-        <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4 shadow-lg lg:sticky lg:top-4">
+        <aside className="w-full shrink-0 space-y-4 lg:w-96">
+        <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4 shadow-lg lg:sticky lg:top-4 max-md:sticky max-md:top-[3.25rem] max-md:z-30">
           <h2 className="text-lg font-semibold">Order {order.orderNumber}</h2>
           <p className="text-sm tabular-nums text-[var(--muted)]">Running total ₹{orderTotals.sub.toFixed(2)}</p>
           <ul className="mt-4 max-h-[50vh] space-y-3 overflow-y-auto overscroll-contain">

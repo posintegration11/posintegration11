@@ -31,10 +31,10 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center p-4">
+    <div className="flex min-h-dvh min-h-screen items-center justify-center p-4 safe-pt pb-[max(1rem,env(safe-area-inset-bottom))]">
       <form
         onSubmit={onSubmit}
-        className="w-full max-w-md space-y-4 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-8"
+        className="w-full max-w-md space-y-4 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6 sm:p-8"
       >
         <h1 className="text-2xl font-semibold">Sign in</h1>
         <p className="text-sm text-[var(--muted)]">

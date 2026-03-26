@@ -16,6 +16,17 @@ body {
   background: var(--bg);
   color: var(--text);
   font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+/* iOS safe areas (notch / home indicator) */
+.safe-pt {
+  padding-top: max(0.5rem, env(safe-area-inset-top, 0px));
+}
+
+.safe-pb {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
 /* Faster taps on tablets / phones (avoids ~300ms click delay) */
