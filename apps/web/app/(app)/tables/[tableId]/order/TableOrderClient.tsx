@@ -357,12 +357,14 @@ export function TableOrderClient({ tableId }: { tableId: string }) {
   if (!order && walkInWithoutOrder) {
     return (
       <div className="mx-auto max-w-lg space-y-6">
-        <Link
-          href="/tables"
-          className="inline-flex text-sm text-[var(--muted)] transition hover:text-[var(--text)]"
-        >
-          ← Tables
-        </Link>
+        <div className="flex flex-wrap gap-3 text-sm text-[var(--muted)]">
+          <Link href="/walk-in" className="transition hover:text-[var(--text)]">
+            ← Walk-in
+          </Link>
+          <Link href="/tables" className="transition hover:text-[var(--text)]">
+            Tables
+          </Link>
+        </div>
         <div className="overflow-hidden rounded-2xl border border-violet-500/35 bg-gradient-to-br from-violet-950/40 to-[var(--surface)] p-8 shadow-xl shadow-violet-950/20">
           <div className="mb-2 inline-flex size-12 items-center justify-center rounded-xl bg-violet-500/25 text-violet-200">
             <svg className="size-7" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
@@ -376,8 +378,11 @@ export function TableOrderClient({ tableId }: { tableId: string }) {
           </div>
           <h1 className="text-2xl font-semibold tracking-tight">Walk-in counter</h1>
           <p className="mt-2 text-[var(--muted)]">
-            Start a new ticket for takeaway or counter guests. Each order stays separate — use{" "}
-            <strong className="text-[var(--text)]">New walk-in order</strong> on Tables for the fastest flow.
+            Open a ticket from the{" "}
+            <Link href="/walk-in" className="font-medium text-[var(--accent)] underline-offset-2 hover:underline">
+              Walk-in
+            </Link>{" "}
+            page to continue the ₹ total you see there, or start the first order for this counter below.
           </p>
           {msg && <p className="mt-4 rounded-lg border border-red-500/30 bg-red-950/40 px-3 py-2 text-sm text-red-300">{msg}</p>}
           <button

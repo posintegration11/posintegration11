@@ -11,6 +11,7 @@ import type { RestaurantSettings } from "@/lib/types";
 
 const links: { href: string; label: string; roles: string[] }[] = [
   { href: "/", label: "Dashboard", roles: ["ADMIN", "CASHIER"] },
+  { href: "/walk-in", label: "Walk-in", roles: ["ADMIN", "CASHIER", "WAITER"] },
   { href: "/tables", label: "Tables", roles: ["ADMIN", "CASHIER", "WAITER"] },
   { href: "/kitchen", label: "Kitchen", roles: ["ADMIN", "KITCHEN"] },
   { href: "/reports", label: "Reports", roles: ["ADMIN", "CASHIER"] },

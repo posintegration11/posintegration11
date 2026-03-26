@@ -88,6 +88,15 @@ router.get("/:tableId/summary", async (req, res, next) => {
 
 const tableOrderRoles = [UserRole.ADMIN, UserRole.CASHIER, UserRole.WAITER] as const;
 
+const postOrderBodySchema = z.object({
+  /** Walk-in only: create a new ticket even after the previous one is fully closed (never while another is still open). */
+  forceNew: z.boolean().optional(),
+});
+
+const nonTerminalStatuses = {
+  notIn: [OrderStatus.PAID, OrderStatus.CLOSED, OrderStatus.CANCELLED] as const,
+};
+
 router.post("/:tableId/orders", requireRole(...tableOrderRoles), async (req, res, next) => {
   try {
     const { tableId } = req.params;
@@ -96,13 +105,28 @@ router.post("/:tableId/orders", requireRole(...tableOrderRoles), async (req, res
       throw new AppError(404, "Table not found");
     }
 
-    if (!table.isWalkIn) {
+    const body = postOrderBodySchema.parse(
+      req.body && typeof req.body === "object" && !Array.isArray(req.body) ? req.body : {},
+    );
+    const forceNew = Boolean(table.isWalkIn && body.forceNew);
+
+    if (forceNew) {
+      const blocking = await prisma.order.findFirst({
+        where: { tableId, status: nonTerminalStatuses },
+      });
+      if (blocking) {
+        throw new AppError(
+          400,
+          "Bill or close the open walk-in order before starting a new ticket.",
+        );
+      }
+    }
+
+    if (!forceNew) {
       const active = await prisma.order.findFirst({
         where: {
           tableId,
-          status: {
-            notIn: [OrderStatus.PAID, OrderStatus.CLOSED, OrderStatus.CANCELLED],
-          },
+          status: nonTerminalStatuses,
         },
         orderBy: { openedAt: "desc" },
       });
@@ -161,9 +185,7 @@ router.get("/:tableId/active-order", requireRole(...tableOrderRoles), async (req
     const order = await prisma.order.findFirst({
       where: {
         tableId,
-        status: {
-          notIn: [OrderStatus.PAID, OrderStatus.CLOSED, OrderStatus.CANCELLED],
-        },
+        status: nonTerminalStatuses,
       },
       orderBy: { openedAt: "desc" },
       include: {
