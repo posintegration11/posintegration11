@@ -7,3 +7,10 @@ dist
 *.log
 *.tsbuildinfo
 .DS_Store
+apps/android-shell/.env
+apps/android-shell/android/app/build
+apps/android-shell/android/.gradle
+apps/android-shell/android/build
+apps/android-shell/android/local.properties
+apps/android-shell/android/*.iml
+apps/android-shell/android/.idea
