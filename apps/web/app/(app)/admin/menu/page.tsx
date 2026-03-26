@@ -13,6 +13,7 @@ export default function AdminMenuPage() {
   const [newCat, setNewCat] = useState("");
   const [newItem, setNewItem] = useState({ name: "", price: "", description: "" });
   const [msg, setMsg] = useState<string | null>(null);
+  const [msgTone, setMsgTone] = useState<"err" | "ok">("err");
 
   const loadCats = useCallback(async () => {
     const c = await api<Category[]>("/menu/categories/all");
@@ -32,6 +33,7 @@ export default function AdminMenuPage() {
   async function addCategory() {
     if (!newCat.trim()) return;
     setMsg(null);
+    setMsgTone("err");
     try {
       await api("/menu/categories", {
         method: "POST",
@@ -47,6 +49,7 @@ export default function AdminMenuPage() {
   async function addItem() {
     if (!sel || !newItem.name.trim()) return;
     setMsg(null);
+    setMsgTone("err");
     try {
       await api("/menu/items", {
         method: "POST",
@@ -67,14 +70,28 @@ export default function AdminMenuPage() {
 
   async function removeItem(id: string) {
     if (!confirm("Delete item?")) return;
-    await api(`/menu/items/${id}`, { method: "DELETE" });
+    setMsg(null);
+    setMsgTone("err");
+    try {
+      const res = await api<{ archived?: boolean; message?: string } | undefined>(`/menu/items/${id}`, {
+        method: "DELETE",
+      });
+      if (res?.archived && res.message) {
+        setMsgTone("ok");
+        setMsg(res.message);
+      }
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : "Failed");
+    }
     if (sel) setItems(await api<MenuItem[]>(`/menu/items?categoryId=${sel}`));
   }
 
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-semibold">Menu management</h1>
-      {msg && <p className="text-sm text-red-400">{msg}</p>}
+      {msg && (
+        <p className={`text-sm ${msgTone === "err" ? "text-red-400" : "text-amber-200"}`}>{msg}</p>
+      )}
       <div className="grid gap-6 lg:grid-cols-2">
         <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
           <h2 className="font-semibold">Categories</h2>

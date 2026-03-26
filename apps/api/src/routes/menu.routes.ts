@@ -203,6 +203,21 @@ router.delete("/items/:id", requireRole(UserRole.ADMIN), async (req, res, next) 
     if (!existing) {
       throw new AppError(404, "Menu item not found");
     }
+
+    const usedOnOrders = await prisma.orderItem.count({ where: { menuItemId: id } });
+    if (usedOnOrders > 0) {
+      await prisma.menuItem.update({
+        where: { id },
+        data: { isAvailable: false },
+      });
+      await writeAudit(req.user!.id, "MENU_ITEM_ARCHIVE", "MenuItem", id, { orderLineCount: usedOnOrders }, rid);
+      return res.json({
+        archived: true,
+        message:
+          "This item was used on past orders, so it was hidden from the menu instead of being deleted. Old bills and reports are unchanged.",
+      });
+    }
+
     await prisma.menuItem.delete({ where: { id } });
     await writeAudit(req.user!.id, "MENU_ITEM_DELETE", "MenuItem", id, {}, rid);
     res.status(204).send();
