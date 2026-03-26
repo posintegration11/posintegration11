@@ -1,0 +1,10 @@
+# Keep image small and avoid leaking local caches
+.git
+**/.git
+**/node_modules
+**/.next
+**/dist
+.env
+.env.*
+!.env.example
+apps/android-shell

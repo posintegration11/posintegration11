@@ -13,6 +13,7 @@ import { authJwt, requireRole, requireTenantUser } from "../middleware/auth.js";
 import { AppError } from "../middleware/errorHandler.js";
 import { emitToTenant } from "../realtime.js";
 import { writeAudit } from "../utils/audit.js";
+import { repairOrphanOrderLines } from "../services/orderRepair.js";
 import { persistOrderTotals } from "../services/orderTotals.js";
 
 const router = Router();
@@ -35,6 +36,12 @@ router.get("/:id", requireRole(UserRole.ADMIN, UserRole.CASHIER, UserRole.WAITER
   try {
     const id = req.params.id;
     const rid = req.user!.restaurantId!;
+    const repaired = await repairOrphanOrderLines(id, rid);
+    if (repaired) {
+      emitToTenant(rid, "order:updated", { orderId: id });
+      emitToTenant(rid, "table:updated");
+    }
+    await persistOrderTotals(id);
     const order = await prisma.order.findFirst({
       where: { id, restaurantId: rid },
       include: {

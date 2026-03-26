@@ -1,30 +1,16 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import {
   PrismaClient,
   RestaurantStatus,
   RestaurantTableStatus,
   UserRole,
   UserStatus,
-  CategoryStatus,
 } from "@prisma/client";
 import bcrypt from "bcryptjs";
+import { applyHandwrittenMenuToRestaurant } from "../apps/api/src/services/handwrittenMenuSeed.js";
 
 const prisma = new PrismaClient();
 
 const LEGACY_RESTAURANT_ID = "a0000000-0000-0000-0000-000000000001";
-
-type HandwrittenJsonItem = { name: string; price?: number; half?: number; full?: number };
-type HandwrittenJsonCategory = { name: string; sortOrder: number; items: HandwrittenJsonItem[] };
-type HandwrittenMenuFile = { categories: HandwrittenJsonCategory[] };
-
-function expandHandwrittenItem(i: HandwrittenJsonItem): { name: string; price: string }[] {
-  const rows: { name: string; price: string }[] = [];
-  if (i.price != null) rows.push({ name: i.name, price: Number(i.price).toFixed(2) });
-  if (i.half != null) rows.push({ name: `${i.name} (Half)`, price: Number(i.half).toFixed(2) });
-  if (i.full != null) rows.push({ name: `${i.name} (Full)`, price: Number(i.full).toFixed(2) });
-  return rows;
-}
 
 async function main() {
   const passwordHash = await bcrypt.hash("password123", 10);
@@ -130,50 +116,10 @@ async function main() {
     });
   }
 
-  const menuPath = join(process.cwd(), "prisma/data/handwritten-menu-extracted.json");
-  const handwritten = JSON.parse(readFileSync(menuPath, "utf8")) as HandwrittenMenuFile;
-
-  for (const cat of handwritten.categories) {
-    let row = await prisma.menuCategory.findFirst({
-      where: { name: cat.name, restaurantId: LEGACY_RESTAURANT_ID },
-    });
-    row =
-      row ??
-      (await prisma.menuCategory.create({
-        data: {
-          restaurantId: LEGACY_RESTAURANT_ID,
-          name: cat.name,
-          sortOrder: cat.sortOrder,
-          status: CategoryStatus.ACTIVE,
-        },
-      }));
-    if (row.sortOrder !== cat.sortOrder) {
-      await prisma.menuCategory.update({
-        where: { id: row.id },
-        data: { sortOrder: cat.sortOrder },
-      });
-    }
-
-    for (const item of cat.items) {
-      for (const expanded of expandHandwrittenItem(item)) {
-        const exists = await prisma.menuItem.findFirst({
-          where: { categoryId: row.id, name: expanded.name },
-        });
-        if (exists) continue;
-        await prisma.menuItem.create({
-          data: {
-            categoryId: row.id,
-            name: expanded.name,
-            price: expanded.price,
-            isAvailable: true,
-          },
-        });
-      }
-    }
-  }
+  await applyHandwrittenMenuToRestaurant(prisma, LEGACY_RESTAURANT_ID);
 
   console.log(
-    "Seed completed.\n  Menu: prisma/data/handwritten-menu-extracted.json (Half/Full = separate lines)\n  Tenant: admin@pos.local / password123 (same for staff)\n  Platform: " +
+    "Seed completed.\n  Menu: prisma/data/handwritten-menu-extracted.json (Half/Full & Pizza Regular/Medium/Large = separate lines)\n  Tenant: admin@pos.local / password123 (same for staff)\n  Platform: " +
       platformEmail +
       " / password123",
   );

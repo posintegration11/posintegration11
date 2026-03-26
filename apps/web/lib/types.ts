@@ -43,18 +43,23 @@ export type WalkInTicketRow = {
   lastInvoice: { paymentStatus: string; invoiceNumber: string } | null;
 };
 
+/** Matches Prisma `MenuItemDiet` */
+export type MenuItemDiet = "VEG" | "NON_VEG" | "VEGAN";
+
 export type MenuItem = {
   id: string;
   name: string;
   description: string | null;
   price: string;
   categoryId: string;
+  diet?: MenuItemDiet;
+  isAvailable?: boolean;
   category?: { name: string };
 };
 
 export type OrderItem = {
   id: string;
-  menuItemId: string;
+  menuItemId: string | null;
   itemNameSnapshot: string;
   itemPriceSnapshot: string;
   quantity: number;

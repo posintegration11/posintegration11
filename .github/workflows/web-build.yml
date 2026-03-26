@@ -1,0 +1,56 @@
+# Verifies Next.js production build on Linux (works when local disk is FAT32/exFAT or Docker/WSL unavailable).
+name: Web production build
+
+concurrency:
+  group: web-build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [main, master]
+    paths:
+      - "apps/web/**"
+      - "package.json"
+      - "package-lock.json"
+      - "prisma/**"
+      - ".github/workflows/web-build.yml"
+  pull_request:
+    paths:
+      - "apps/web/**"
+      - "package.json"
+      - "package-lock.json"
+      - "prisma/**"
+      - ".github/workflows/web-build.yml"
+
+env:
+  NEXT_TELEMETRY_DISABLED: "1"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint & typecheck
+        run: |
+          npm run lint
+          npm run typecheck
+
+      - name: Production build
+        run: npm run build

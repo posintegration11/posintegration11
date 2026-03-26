@@ -5,6 +5,8 @@ import { prisma } from "../prisma.js";
 import { authJwt, requireRole, requireTenantUser } from "../middleware/auth.js";
 import { AppError } from "../middleware/errorHandler.js";
 import { emitToTenant } from "../realtime.js";
+import { repairOrphanOrderLines } from "../services/orderRepair.js";
+import { persistOrderTotals } from "../services/orderTotals.js";
 import { writeAudit } from "../utils/audit.js";
 import { makeOrderNumber } from "../utils/refs.js";
 
@@ -190,7 +192,7 @@ router.get("/:tableId/active-order", requireRole(...tableOrderRoles), async (req
   try {
     const { tableId } = req.params;
     const rid = req.user!.restaurantId!;
-    const order = await prisma.order.findFirst({
+    let order = await prisma.order.findFirst({
       where: {
         tableId,
         restaurantId: rid,
@@ -203,6 +205,22 @@ router.get("/:tableId/active-order", requireRole(...tableOrderRoles), async (req
         kots: { include: { items: true }, orderBy: { createdAt: "desc" } },
       },
     });
+    if (order) {
+      const repaired = await repairOrphanOrderLines(order.id, rid);
+      if (repaired) {
+        emitToTenant(rid, "order:updated", { orderId: order.id });
+        emitToTenant(rid, "table:updated");
+      }
+      await persistOrderTotals(order.id);
+      order = await prisma.order.findFirst({
+        where: { id: order.id, restaurantId: rid },
+        include: {
+          table: true,
+          items: { orderBy: { id: "asc" } },
+          kots: { include: { items: true }, orderBy: { createdAt: "desc" } },
+        },
+      });
+    }
     res.json(order);
   } catch (e) {
     next(e);

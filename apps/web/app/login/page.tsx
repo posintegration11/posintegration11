@@ -7,6 +7,7 @@ import { api } from "@/lib/api";
 import { POS_SHOW_ENTRY_NOTICE_KEY } from "@/components/AppEntryNotice";
 import { LoadingButton } from "@/components/LoadingButton";
 import { setSession } from "@/lib/auth";
+import { prefetchAllShellRoutes, warmupTenantApis } from "@/lib/tenantWarmup";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -28,6 +29,8 @@ export default function LoginPage() {
       if (res.user.role === "SUPER_ADMIN") {
         router.replace("/platform");
       } else {
+        warmupTenantApis(res.user.role);
+        prefetchAllShellRoutes(router);
         try {
           sessionStorage.setItem(POS_SHOW_ENTRY_NOTICE_KEY, "1");
         } catch {

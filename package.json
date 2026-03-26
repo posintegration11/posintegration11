@@ -15,7 +15,12 @@
     "dev:api": "npm run dev --prefix apps/api",
     "dev:web": "npm run dev --prefix apps/web",
     "dev": "npm exec --no -- concurrently -n api,web -c blue,green npm:dev:api npm:dev:web",
-    "build": "npm run build --prefix apps/api && npm run build --prefix apps/web",
+    "build": "npm run build:api && npm run build:web",
+    "build:api": "npm run build --prefix apps/api",
+    "build:web": "node ./scripts/build-web.mjs",
+    "build:web:docker": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/build-web-docker.ps1",
+    "build:web:stage": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/build-web-ntfs-staging.ps1",
+    "verify:web": "npm run lint --prefix apps/web && npm run typecheck --prefix apps/web",
     "android:sync": "npm run sync --prefix apps/android-shell",
     "android:open": "npm run open --prefix apps/android-shell"
   },

@@ -154,6 +154,120 @@
         { "name": "Chowmein Burger", "price": 50 },
         { "name": "Chowmein Cheese Burger", "price": 60 }
       ]
+    },
+    {
+      "name": "Sandwiches",
+      "sortOrder": 14,
+      "items": [
+        { "name": "Grilled Sandwich", "price": 80 },
+        { "name": "Spicy Grilled Sandwich", "price": 90 },
+        { "name": "Cheesy Grilled Sandwich", "price": 100 },
+        { "name": "Cheesy Spicy Sandwich", "price": 110 },
+        { "name": "Jumbo Spicy Sandwich", "price": 120 },
+        { "name": "Tandoori Paneer Sandwich", "price": 110 }
+      ]
+    },
+    {
+      "name": "Pasta",
+      "sortOrder": 15,
+      "items": [
+        { "name": "White Pasta", "price": 100 },
+        { "name": "Red Pasta", "price": 100 },
+        { "name": "Cheesy Jumbo Pasta", "price": 140 },
+        { "name": "Tandoori Pasta", "price": 120 },
+        { "name": "Cheesy Spicy Pasta", "price": 140 }
+      ]
+    },
+    {
+      "name": "Pizza",
+      "sortOrder": 16,
+      "items": [
+        { "name": "Hot Shot Pizza", "regular": 180, "medium": 300, "large": 400 },
+        { "name": "Pizza-A-Maxicana", "regular": 180, "medium": 300, "large": 400 },
+        { "name": "Makhni Paneer Pizza", "regular": 180, "medium": 300, "large": 400 },
+        { "name": "Ultimate Tandoori Veggies", "regular": 280, "medium": 400, "large": 550 },
+        { "name": "Awesome American Cheese", "regular": 280, "medium": 400, "large": 550 },
+        { "name": "Shaunk-A-Nawaabi", "regular": 280, "medium": 400, "large": 550 },
+        { "name": "Sai Special Pizza", "regular": 280, "medium": 400, "large": 550 },
+        { "name": "Schezwan Margherita", "regular": 200, "medium": 350, "large": 450 },
+        { "name": "Bold BBQ Veggies", "regular": 200, "medium": 350, "large": 450 },
+        { "name": "Tandoori Paneer Pizza", "regular": 200, "medium": 350, "large": 450 },
+        { "name": "Farm House Pizza", "regular": 150, "medium": 280, "large": 350 },
+        { "name": "Cheese & Corn Pizza", "regular": 150, "medium": 280, "large": 350 },
+        { "name": "Margherita Pizza", "regular": 150, "medium": 280, "large": 350 },
+        { "name": "Achari Sauce Pizza", "regular": 220, "medium": 380, "large": 500 },
+        { "name": "Peppy Peprika Pizza", "regular": 220, "medium": 380, "large": 500 },
+        { "name": "BBQ Pizza", "regular": 220, "medium": 380, "large": 500 }
+      ]
+    },
+    {
+      "name": "Shakes & Drinks",
+      "sortOrder": 17,
+      "items": [
+        { "name": "Vanilla Shake", "price": 70 },
+        { "name": "Strawberry Shake", "price": 80 },
+        { "name": "Chocolate Shake", "price": 80 },
+        { "name": "Cold Coffee", "price": 70 },
+        { "name": "Paan Shake", "price": 80 },
+        { "name": "Oreo Shake", "price": 80 },
+        { "name": "Kitkat Shake", "price": 90 },
+        { "name": "Butterscotch Shake", "price": 80 },
+        { "name": "Blackcurrant", "price": 80 }
+      ]
+    },
+    {
+      "name": "Bread",
+      "sortOrder": 18,
+      "items": [
+        { "name": "Garlic Bread", "price": 80 },
+        { "name": "Cheese Garlic Bread", "price": 100 },
+        { "name": "Stuffed Garlic Bread", "price": 120 },
+        { "name": "Spicy Cheesy Garlic Bread", "price": 130 },
+        { "name": "Paneer Garlic Bread", "price": 140 }
+      ]
+    },
+    {
+      "name": "Desserts",
+      "sortOrder": 19,
+      "items": [
+        { "name": "Ice Cream Vanilla", "price": 40 },
+        { "name": "Ice Cream Strawberry", "price": 40 },
+        { "name": "Ice Cream Chocolate", "price": 50 },
+        { "name": "Ice Cream Butterscotch", "price": 50 },
+        { "name": "Lava Cake", "price": 60 },
+        { "name": "Lava Cake with Ice Cream", "price": 90 },
+        { "name": "Oreo Ice Cream", "price": 80 },
+        { "name": "Sunday Special", "price": 80 }
+      ]
+    },
+    {
+      "name": "Chaap",
+      "sortOrder": 20,
+      "items": [
+        { "name": "Malai Champ", "half": 120, "full": 200 },
+        { "name": "Makhni Champ", "half": 100, "full": 180 },
+        { "name": "Tandoori Champ", "half": 100, "full": 180 },
+        { "name": "Achaari Champ", "half": 120, "full": 200 },
+        { "name": "Afghani Champ", "half": 120, "full": 200 }
+      ]
+    },
+    {
+      "name": "Tandoori Momo (Chaap Hub)",
+      "sortOrder": 21,
+      "items": [
+        { "name": "Tandoori Momo", "half": 60, "full": 100 },
+        { "name": "Tandoori Malai Momo", "half": 70, "full": 120 },
+        { "name": "Tandoori Momo Paneer", "half": 80, "full": 150 },
+        { "name": "Tandoori Malai Paneer Momo", "half": 80, "full": 160 }
+      ]
+    },
+    {
+      "name": "Tikka",
+      "sortOrder": 22,
+      "items": [
+        { "name": "Paneer Tikka", "half": 150, "full": 250 },
+        { "name": "Mushroom Tikka", "half": 120, "full": 200 }
+      ]
     }
   ]
 }

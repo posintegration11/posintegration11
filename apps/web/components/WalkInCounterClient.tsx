@@ -192,7 +192,8 @@ export function WalkInCounterClient() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Walk-in</h1>
           <p className="text-sm text-[var(--muted)]">
-            Open tickets appear below with actions. Start a new order only after the current one is billed or closed.
+            Use the counter card to open the order screen. Running totals and status for each ticket are listed under{" "}
+            <span className="font-medium text-[var(--text)]">Tickets</span> below.
           </p>
         </div>
         <LoadingButton
@@ -215,7 +216,6 @@ export function WalkInCounterClient() {
       <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap">
         {walkInTables.map((t) => {
           const busy = openBusyId === t.id;
-          const hasActive = Boolean(t.activeOrderId);
 
           return (
             <div
@@ -239,17 +239,8 @@ export function WalkInCounterClient() {
                     <div>
                       <div className="text-lg font-bold text-[var(--text)]">{t.name ?? "Walk-in"}</div>
                       <div className="text-sm text-[var(--muted)]">
-                        Counter ·{" "}
-                        {hasActive ? (
-                          <>
-                            <span className="text-[var(--text)]">Open ticket</span>
-                            {t.activeTotal > 0 && (
-                              <span className="text-[var(--success)]"> · ₹{t.activeTotal.toFixed(2)}</span>
-                            )}
-                          </>
-                        ) : (
-                          "No open order — start when ready"
-                        )}
+                        Counter — amount and status for each ticket appear under <span className="text-[var(--text)]">Tickets</span>{" "}
+                        below
                       </div>
                     </div>
                   </div>
@@ -261,10 +252,8 @@ export function WalkInCounterClient() {
                   <LoadingButton
                     type="button"
                     loading={busy}
-                    disabled={loading || hasActive}
-                    title={
-                      hasActive ? "Bill or close the current ticket first (see cards below)" : "Start a new walk-in order"
-                    }
+                    disabled={loading}
+                    title="Opens the walk-in order screen (resumes the open ticket if one exists)"
                     onClick={() => void openCounter(t)}
                     className="inline-flex touch-manipulation items-center justify-center rounded-xl bg-violet-500 px-6 py-3.5 text-center text-sm font-semibold text-white shadow-md shadow-violet-900/40 transition hover:brightness-110 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:brightness-100"
                   >

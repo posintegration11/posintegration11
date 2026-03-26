@@ -4,6 +4,25 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 Set-Location $root
 
+function Test-RepoOnFatVolume {
+    if ($root -notmatch '^([A-Za-z]):\\') { return $false }
+    $letter = $Matches[1].ToUpperInvariant()
+    try {
+        $info = & fsutil fsinfo volumeinfo "${letter}:" 2>&1 | Out-String
+    } catch {
+        return $false
+    }
+    return ($info -match 'File System Name\s*:\s*FAT32' -or $info -match 'File System Name\s*:\s*exFAT')
+}
+
+if (Test-RepoOnFatVolume) {
+    Write-Host ""
+    Write-Host "WARNING: This repo is on FAT32/exFAT ($root)." -ForegroundColor Yellow
+    Write-Host '  • npm run build:web / npm run build usually fail here (webpack readlink). Options: NTFS path, npm run build:web:docker (Docker on), or GitHub Actions.' -ForegroundColor Yellow
+    Write-Host '  • You can still run npm run verify:web (lint + tsc) and npm run build:api.' -ForegroundColor Yellow
+    Write-Host ""
+}
+
 function Remove-NodeModulesTree {
     param([Parameter(Mandatory)][string]$Dir)
     if (-not (Test-Path -LiteralPath $Dir)) { return }

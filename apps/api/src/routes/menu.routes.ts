@@ -1,30 +1,13 @@
 import { Router } from "express";
-import { CategoryStatus, UserRole, type Prisma } from "@prisma/client";
+import { CategoryStatus, MenuItemDiet, UserRole } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../prisma.js";
 import { authJwt, requireRole, requireTenantUser } from "../middleware/auth.js";
 import { AppError } from "../middleware/errorHandler.js";
 import { writeAudit } from "../utils/audit.js";
+import { applyHandwrittenMenuToRestaurant } from "../services/handwrittenMenuSeed.js";
 
 const router = Router();
-
-const ARCHIVE_CATEGORY_NAME = "Archived (order history)";
-
-async function getOrCreateArchiveCategory(tx: Prisma.TransactionClient, restaurantId: string) {
-  const existing = await tx.menuCategory.findFirst({
-    where: { restaurantId, name: ARCHIVE_CATEGORY_NAME },
-  });
-  if (existing) return existing.id;
-  const row = await tx.menuCategory.create({
-    data: {
-      restaurantId,
-      name: ARCHIVE_CATEGORY_NAME,
-      sortOrder: 9999,
-      status: CategoryStatus.INACTIVE,
-    },
-  });
-  return row.id;
-}
 
 router.use(authJwt);
 router.use(requireTenantUser);
@@ -37,6 +20,18 @@ router.get("/categories/all", requireRole(UserRole.ADMIN), async (req, res, next
       orderBy: { sortOrder: "asc" },
     });
     res.json(rows);
+  } catch (e) {
+    next(e);
+  }
+});
+
+/** Merge prisma/data/handwritten-menu-extracted.json into this tenant (skips existing names). */
+router.post("/admin/apply-handwritten", requireRole(UserRole.ADMIN), async (req, res, next) => {
+  try {
+    const rid = req.user!.restaurantId!;
+    await applyHandwrittenMenuToRestaurant(prisma, rid);
+    await writeAudit(req.user!.id, "MENU_APPLY_HANDWRITTEN", "Restaurant", rid, {}, rid);
+    res.json({ ok: true });
   } catch (e) {
     next(e);
   }
@@ -59,18 +54,38 @@ router.get("/items", async (req, res, next) => {
   try {
     const rid = req.user!.restaurantId!;
     const categoryId = req.query.categoryId as string | undefined;
-    const q = (req.query.q as string | undefined)?.trim();
+    const qRaw = (req.query.q as string | undefined)?.trim();
+    const searchTokens =
+      qRaw && qRaw.length > 0
+        ? qRaw
+            .split(/\s+/)
+            .map((t) => t.trim())
+            .filter((t) => t.length > 0)
+        : [];
+    const dietRaw = (req.query.diet as string | undefined)?.toUpperCase();
+    const dietFilter =
+      dietRaw && (Object.values(MenuItemDiet) as string[]).includes(dietRaw)
+        ? (dietRaw as MenuItemDiet)
+        : undefined;
+    /** Admin menu screen must list archived / hidden rows; POS ordering keeps default available-only. */
+    const includeUnavailable =
+      req.user!.role === UserRole.ADMIN &&
+      (req.query.includeUnavailable === "true" || req.query.includeUnavailable === "1");
     const rows = await prisma.menuItem.findMany({
       where: {
-        isAvailable: true,
+        ...(includeUnavailable ? {} : { isAvailable: true }),
         category: { restaurantId: rid },
         ...(categoryId ? { categoryId } : {}),
-        ...(q
+        ...(dietFilter ? { diet: dietFilter } : {}),
+        ...(searchTokens.length > 0
           ? {
-              OR: [
-                { name: { contains: q, mode: "insensitive" } },
-                { description: { contains: q, mode: "insensitive" } },
-              ],
+              AND: searchTokens.map((t) => ({
+                OR: [
+                  { name: { contains: t, mode: "insensitive" } },
+                  { description: { contains: t, mode: "insensitive" } },
+                  { category: { name: { contains: t, mode: "insensitive" } } },
+                ],
+              })),
             }
           : {}),
       },
@@ -133,31 +148,8 @@ router.delete("/categories/:id", requireRole(UserRole.ADMIN), async (req, res, n
     if (!existing) {
       throw new AppError(404, "Category not found");
     }
-    if (existing.name === ARCHIVE_CATEGORY_NAME) {
-      throw new AppError(400, "Cannot delete the system archive category");
-    }
 
-    await prisma.$transaction(async (tx) => {
-      const archiveCatId = await getOrCreateArchiveCategory(tx, rid);
-      if (archiveCatId === id) {
-        throw new AppError(400, "Invalid category");
-      }
-
-      const items = await tx.menuItem.findMany({ where: { categoryId: id }, select: { id: true } });
-      for (const it of items) {
-        const used = await tx.orderItem.count({ where: { menuItemId: it.id } });
-        if (used > 0) {
-          await tx.menuItem.update({
-            where: { id: it.id },
-            data: { categoryId: archiveCatId, isAvailable: false },
-          });
-        } else {
-          await tx.menuItem.delete({ where: { id: it.id } });
-        }
-      }
-
-      await tx.menuCategory.delete({ where: { id } });
-    });
+    await prisma.menuCategory.delete({ where: { id } });
 
     await writeAudit(req.user!.id, "MENU_CATEGORY_DELETE", "MenuCategory", id, { name: existing.name }, rid);
     res.status(204).send();
@@ -173,6 +165,7 @@ const itemCreate = z.object({
   price: z.union([z.number(), z.string()]),
   taxRate: z.union([z.number(), z.string()]).optional(),
   isAvailable: z.boolean().optional(),
+  diet: z.nativeEnum(MenuItemDiet).optional(),
 });
 
 router.post("/items", requireRole(UserRole.ADMIN), async (req, res, next) => {
@@ -193,6 +186,7 @@ router.post("/items", requireRole(UserRole.ADMIN), async (req, res, next) => {
         price: String(body.price),
         taxRate: body.taxRate != null ? String(body.taxRate) : null,
         isAvailable: body.isAvailable ?? true,
+        diet: body.diet ?? MenuItemDiet.VEG,
       },
     });
     await writeAudit(req.user!.id, "MENU_ITEM_CREATE", "MenuItem", row.id, { name: row.name }, rid);
@@ -248,21 +242,8 @@ router.delete("/items/:id", requireRole(UserRole.ADMIN), async (req, res, next) 
     }
 
     const usedOnOrders = await prisma.orderItem.count({ where: { menuItemId: id } });
-    if (usedOnOrders > 0) {
-      await prisma.menuItem.update({
-        where: { id },
-        data: { isAvailable: false },
-      });
-      await writeAudit(req.user!.id, "MENU_ITEM_ARCHIVE", "MenuItem", id, { orderLineCount: usedOnOrders }, rid);
-      return res.json({
-        archived: true,
-        message:
-          "This item was used on past orders, so it was hidden from the menu instead of being deleted. Old bills and reports are unchanged.",
-      });
-    }
-
     await prisma.menuItem.delete({ where: { id } });
-    await writeAudit(req.user!.id, "MENU_ITEM_DELETE", "MenuItem", id, {}, rid);
+    await writeAudit(req.user!.id, "MENU_ITEM_DELETE", "MenuItem", id, { unlinkedOrderLines: usedOnOrders }, rid);
     res.status(204).send();
   } catch (e) {
     next(e);

@@ -14,6 +14,7 @@ import { authJwt, signAccessToken } from "../middleware/auth.js";
 import { AppError } from "../middleware/errorHandler.js";
 import { getEnv } from "../config/env.js";
 import { sendVerificationEmail } from "../services/mail.js";
+import { applyHandwrittenMenuToRestaurant } from "../services/handwrittenMenuSeed.js";
 
 const router = Router();
 
@@ -151,6 +152,7 @@ router.post("/register-tenant", async (req, res, next) => {
       });
 
       await createDefaultTables(tx, restaurant.id, 10);
+      await applyHandwrittenMenuToRestaurant(tx, restaurant.id);
 
       const user = await tx.user.create({
         data: {

@@ -8,19 +8,10 @@ import { ShopBrandMark } from "@/components/ShopBrandMark";
 import { Spinner } from "@/components/Spinner";
 import { api } from "@/lib/api";
 import { clearSession, getToken, getUser, type AuthUser } from "@/lib/auth";
+import { shellNavLinks } from "@/lib/navLinks";
 import { reconnectSocket } from "@/lib/socket";
+import { prefetchAllShellRoutes, warmupTenantApis } from "@/lib/tenantWarmup";
 import type { RestaurantSettings } from "@/lib/types";
-
-const links: { href: string; label: string; shortLabel: string; roles: string[] }[] = [
-  { href: "/dashboard", label: "Dashboard", shortLabel: "Home", roles: ["ADMIN", "CASHIER"] },
-  { href: "/walk-in", label: "Walk-in", shortLabel: "Walk-in", roles: ["ADMIN", "CASHIER", "WAITER"] },
-  { href: "/tables", label: "Tables", shortLabel: "Tables", roles: ["ADMIN", "CASHIER", "WAITER"] },
-  { href: "/kitchen", label: "Kitchen", shortLabel: "Kitchen", roles: ["ADMIN", "KITCHEN"] },
-  { href: "/reports", label: "Reports", shortLabel: "Reports", roles: ["ADMIN", "CASHIER"] },
-  { href: "/admin/menu", label: "Menu", shortLabel: "Menu", roles: ["ADMIN"] },
-  { href: "/admin/users", label: "Users", shortLabel: "Users", roles: ["ADMIN"] },
-  { href: "/settings", label: "Settings", shortLabel: "Settings", roles: ["ADMIN", "CASHIER"] },
-];
 
 const MOBILE_TAB_COUNT = 4;
 
@@ -91,6 +82,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [shop, setShop] = useState<RestaurantSettings | null>(null);
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
+  /** Set synchronously on nav click so sidebar/tabs feel instant before the route finishes loading. */
+  const [pendingHref, setPendingHref] = useState<string | null>(null);
 
   const closeMobile = useCallback(() => setMobileDrawerOpen(false), []);
 
@@ -136,6 +129,31 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     closeMobile();
   }, [pathname, closeMobile]);
 
+  /** After login: prefetch every shell route + warm common APIs during idle time. */
+  useEffect(() => {
+    if (!user || user.role === "SUPER_ADMIN") return;
+    const run = () => {
+      prefetchAllShellRoutes(router);
+      warmupTenantApis(user.role);
+    };
+    const useRic = typeof window.requestIdleCallback === "function";
+    const id = useRic ? window.requestIdleCallback(run) : window.setTimeout(run, 32);
+    return () => {
+      if (useRic) window.cancelIdleCallback(id);
+      else window.clearTimeout(id);
+    };
+  }, [user, router]);
+
+  useEffect(() => {
+    setPendingHref(null);
+  }, [pathname]);
+
+  useEffect(() => {
+    if (!pendingHref) return;
+    const t = window.setTimeout(() => setPendingHref(null), 12_000);
+    return () => window.clearTimeout(t);
+  }, [pendingHref]);
+
   useEffect(() => {
     if (!mobileDrawerOpen) return;
     function onKey(e: KeyboardEvent) {
@@ -165,7 +183,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     );
   }
 
-  const visible = links.filter((l) => l.roles.includes(user.role));
+  const visible = shellNavLinks.filter((l) => l.roles.includes(user.role));
   const mobileTabs = visible.slice(0, MOBILE_TAB_COUNT);
   const mobileOverflow = visible.slice(MOBILE_TAB_COUNT);
   const hasOverflow = mobileOverflow.length > 0;
@@ -174,10 +192,20 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const shopAddress = shop?.address?.trim() ?? "";
   const shopLogo = shop?.logoUrl ?? null;
 
-  const linkClass = (href: string) =>
-    `touch-manipulation rounded-lg px-3 py-2.5 text-sm font-medium transition duration-75 active:scale-[0.98] md:py-2 ${
-      pathname === href ? "bg-[var(--accent)] text-white shadow-md shadow-[var(--accent)]/25" : "hover:bg-[var(--border)]"
+  function markNavPending(href: string) {
+    if (href !== pathname) setPendingHref(href);
+  }
+
+  const linkClass = (href: string) => {
+    const active = pathname === href;
+    const pending = pendingHref === href;
+    if (pending) {
+      return `touch-manipulation rounded-lg px-3 py-2.5 text-sm font-medium transition-[transform,background-color,box-shadow,color] duration-100 active:scale-[0.98] md:py-2 bg-[var(--accent)]/18 text-[var(--accent)] ring-2 ring-[var(--accent)]/45 ring-offset-2 ring-offset-[var(--surface)]`;
+    }
+    return `touch-manipulation rounded-lg px-3 py-2.5 text-sm font-medium transition-[transform,background-color,box-shadow,color] duration-100 active:scale-[0.98] md:py-2 ${
+      active ? "bg-[var(--accent)] text-white shadow-md shadow-[var(--accent)]/25" : "hover:bg-[var(--border)]"
     }`;
+  };
 
   const sidebarInner = (
     <>
@@ -204,9 +232,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </div>
       <nav className="flex flex-col gap-0.5 md:gap-1">
         {visible.map((l) => (
-          <Link key={l.href} href={l.href} prefetch className={`flex items-center gap-2.5 ${linkClass(l.href)}`}>
-            <NavGlyph href={l.href} />
-            {l.label}
+          <Link
+            key={l.href}
+            href={l.href}
+            prefetch
+            aria-busy={pendingHref === l.href}
+            onClick={() => markNavPending(l.href)}
+            className={`flex items-center gap-2.5 ${linkClass(l.href)}`}
+          >
+            {pendingHref === l.href ? <Spinner className="size-4 shrink-0 text-[var(--accent)]" /> : <NavGlyph href={l.href} />}
+            <span className="min-w-0 flex-1">{l.label}</span>
+            {pendingHref === l.href ? (
+              <span className="sr-only">Loading page</span>
+            ) : null}
           </Link>
         ))}
       </nav>
@@ -223,9 +261,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <>
       <AppEntryNotice authReady />
-      <div className="flex min-h-dvh min-h-screen overflow-x-hidden">
+      {/*
+        md+: shell height = viewport; main scrolls inside (long menus). aside stays self-start + h-dvh.
+        max-md: shell grows with content; body scrolls as usual.
+        md:h-dvh + main overflow-y-auto: long pages scroll inside main (sidebar stays put).
+      */}
+      <div className="flex min-h-dvh items-start overflow-x-hidden md:h-dvh md:max-h-dvh md:overflow-hidden">
       {/* Desktop sidebar */}
-      <aside className="no-print sticky top-0 hidden h-dvh max-h-dvh w-52 shrink-0 flex-col overflow-y-auto overflow-x-hidden overscroll-y-contain border-r border-[var(--border)] bg-[var(--surface)] p-4 md:flex">
+      <aside className="no-print sticky top-0 hidden h-dvh max-h-dvh w-52 shrink-0 flex-col self-start overflow-y-auto overflow-x-hidden overscroll-y-contain border-r border-[var(--border)] bg-[var(--surface)] p-4 md:flex">
         {sidebarInner}
       </aside>
 
@@ -264,9 +307,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       </div>
 
-      <div className="flex min-h-dvh min-h-screen min-w-0 flex-1 flex-col">
+      <div className="flex min-h-dvh min-w-0 flex-1 flex-col min-h-0 md:h-dvh md:min-h-0 md:overflow-hidden">
         {/* Mobile top bar */}
-        <header className="no-print safe-pt sticky top-0 z-40 flex items-center gap-3 border-b border-[var(--border)] bg-[var(--surface)]/95 px-3 py-3 shadow-md shadow-black/20 backdrop-blur-md md:hidden">
+        <header className="no-print safe-pt sticky top-0 z-40 flex shrink-0 items-center gap-3 border-b border-[var(--border)] bg-[var(--surface)]/95 px-3 py-3 shadow-md shadow-black/20 backdrop-blur-md md:hidden">
           <button
             type="button"
             onClick={() => setMobileDrawerOpen(true)}
@@ -286,30 +329,44 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </header>
 
-        <main className="min-w-0 flex-1 px-3 py-4 pb-[calc(5rem+env(safe-area-inset-bottom,0px))] sm:px-4 md:px-6 md:py-6 md:pb-6">
+        <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto overscroll-contain px-3 py-4 pb-[calc(5rem+env(safe-area-inset-bottom,0px))] sm:px-4 md:px-6 md:py-6 md:pb-6">
           {children}
         </main>
 
         {/* Mobile bottom tabs */}
         <nav className="no-print fixed bottom-0 left-0 right-0 z-40 flex rounded-t-2xl border border-b-0 border-[var(--border)] bg-[var(--surface)]/98 pb-[env(safe-area-inset-bottom,0px)] pt-1.5 shadow-[0_-8px_32px_rgba(0,0,0,0.45)] backdrop-blur-md md:hidden">
           <div className="mx-auto flex w-full max-w-lg items-stretch justify-around gap-1 px-1.5">
-            {mobileTabs.map((l) => (
-              <Link
-                key={l.href}
-                href={l.href}
-                prefetch
-                className={`flex min-w-0 flex-1 flex-col items-center gap-0.5 rounded-xl px-1 py-2 touch-manipulation transition duration-75 active:scale-[0.97] ${
-                  pathname === l.href ? "bg-[var(--accent)]/15 text-[var(--accent)]" : "text-[var(--muted)]"
-                }`}
-              >
-                <span className={pathname === l.href ? "text-[var(--accent)]" : "text-[var(--muted)]"}>
-                  <NavGlyph href={l.href} />
-                </span>
-                <span className="w-full truncate text-center text-[10px] font-semibold leading-tight">
-                  {l.shortLabel}
-                </span>
-              </Link>
-            ))}
+            {mobileTabs.map((l) => {
+              const active = pathname === l.href;
+              const pending = pendingHref === l.href;
+              return (
+                <Link
+                  key={l.href}
+                  href={l.href}
+                  prefetch
+                  aria-busy={pending}
+                  onClick={() => markNavPending(l.href)}
+                  className={`flex min-w-0 flex-1 flex-col items-center gap-0.5 rounded-xl px-1 py-2 touch-manipulation transition-[transform,background-color,color] duration-100 active:scale-[0.97] ${
+                    pending
+                      ? "bg-[var(--accent)]/25 text-[var(--accent)] ring-2 ring-inset ring-[var(--accent)]/35"
+                      : active
+                        ? "bg-[var(--accent)]/15 text-[var(--accent)]"
+                        : "text-[var(--muted)]"
+                  }`}
+                >
+                  <span
+                    className={
+                      pending ? "text-[var(--accent)]" : active ? "text-[var(--accent)]" : "text-[var(--muted)]"
+                    }
+                  >
+                    {pending ? <Spinner className="size-5 shrink-0" /> : <NavGlyph href={l.href} />}
+                  </span>
+                  <span className="w-full truncate text-center text-[10px] font-semibold leading-tight">
+                    {l.shortLabel}
+                  </span>
+                </Link>
+              );
+            })}
             {hasOverflow ? (
               <button
                 type="button"
