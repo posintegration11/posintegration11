@@ -16,7 +16,11 @@ const schema = z.object({
   SMTP_PORT: z.coerce.number().optional().default(587),
   SMTP_USER: z.string().optional(),
   SMTP_PASS: z.string().optional(),
-  SMTP_FROM: z.string().email().optional().default("noreply@localhost"),
+  /** Must be a valid email string; `localhost` TLD fails Zod email — use example.com or your domain */
+  SMTP_FROM: z.preprocess(
+    (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
+    z.string().email().optional().default("noreply@example.com"),
+  ),
 });
 
 export type Env = z.infer<typeof schema>;
