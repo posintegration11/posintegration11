@@ -1,0 +1,159 @@
+{
+  "meta": {
+    "source": "Handwritten menu pages (user photos). Notation: slash prices are half/full — left = Half, right = Full.",
+    "currency": "INR",
+    "created": "2026-03-24"
+  },
+  "categories": [
+    {
+      "name": "Starters",
+      "sortOrder": 0,
+      "items": [
+        { "name": "Veg. Fingers", "price": 100 },
+        { "name": "Cheese Balls", "price": 120 },
+        { "name": "Potato Balls", "price": 100 }
+      ]
+    },
+    {
+      "name": "Beverages",
+      "sortOrder": 1,
+      "items": [
+        { "name": "Tea", "price": 15 },
+        { "name": "Special Masala Tea", "price": 20 },
+        { "name": "Hot Coffee", "price": 40 }
+      ]
+    },
+    {
+      "name": "Soft Drinks",
+      "sortOrder": 2,
+      "items": [
+        { "name": "Cold Drink — ₹10", "price": 10 },
+        { "name": "Cold Drink — ₹20", "price": 20 },
+        { "name": "Cold Drink — ₹30", "price": 30 },
+        { "name": "Cold Drink — ₹40", "price": 40 },
+        { "name": "Cold Drink — ₹70", "price": 70 }
+      ]
+    },
+    {
+      "name": "Momos",
+      "sortOrder": 3,
+      "items": [
+        { "name": "Veg. Momo", "half": 40, "full": 70 },
+        { "name": "Veg. Fried Momo", "half": 45, "full": 80 },
+        { "name": "Paneer Momo", "half": 60, "full": 100 },
+        { "name": "Paneer Fried Momo", "half": 70, "full": 120 },
+        { "name": "Chilly Veg. Momo", "half": 70, "full": 120 },
+        { "name": "Chilly Paneer Momo", "half": 80, "full": 150 },
+        { "name": "Gravy Veg. Momo", "half": 70, "full": 120 },
+        { "name": "Gravy Paneer Momo", "half": 80, "full": 150 },
+        { "name": "Kurkure Veg. Momo", "half": 60, "full": 100 },
+        { "name": "Kurkure Paneer Momo", "half": 80, "full": 150 }
+      ]
+    },
+    {
+      "name": "Rolls",
+      "sortOrder": 4,
+      "items": [
+        { "name": "Veg. Spring Roll", "half": 35, "full": 60 },
+        { "name": "Paneer Spring Roll", "half": 45, "full": 80 },
+        { "name": "Noodle Spring Roll", "half": 35, "full": 70 },
+        { "name": "Chilly Spring Roll", "half": 70, "full": 120 }
+      ]
+    },
+    {
+      "name": "Manchurian",
+      "sortOrder": 5,
+      "items": [
+        { "name": "Veg. Manchurian Dry", "half": 70, "full": 120 },
+        { "name": "Veg. Gravy Manchurian", "half": 70, "full": 120 }
+      ]
+    },
+    {
+      "name": "Noodles",
+      "sortOrder": 6,
+      "items": [
+        { "name": "Veg. Noodles", "half": 35, "full": 60 },
+        { "name": "Paneer Noodles", "half": 60, "full": 100 },
+        { "name": "Manchurian Noodles", "half": 50, "full": 80 }
+      ]
+    },
+    {
+      "name": "Maggie",
+      "sortOrder": 7,
+      "items": [
+        { "name": "Plain Maggie", "price": 40 },
+        { "name": "Veg. Maggie", "price": 60 },
+        { "name": "Saucy Maggie", "price": 80 }
+      ]
+    },
+    {
+      "name": "Dosa",
+      "sortOrder": 8,
+      "items": [
+        { "name": "Plain Dosa", "price": 70 },
+        { "name": "Masala Dosa", "price": 90 },
+        { "name": "Paneer Dosa", "price": 120 },
+        { "name": "Cheesy Dosa", "price": 120 },
+        { "name": "Spicy Masala Dosa", "price": 100 }
+      ]
+    },
+    {
+      "name": "Mania Range — Single",
+      "sortOrder": 9,
+      "items": [
+        { "name": "Mania Paneer (Single)", "price": 79 },
+        { "name": "Mania Mushroom (Single)", "price": 69 },
+        { "name": "Mania Onion (Single)", "price": 59 },
+        { "name": "Mania Capsicum (Single)", "price": 59 },
+        { "name": "Mania Corn (Single)", "price": 69 },
+        { "name": "Mania Tomato (Single)", "price": 59 }
+      ]
+    },
+    {
+      "name": "Mania Range — Double",
+      "sortOrder": 10,
+      "items": [
+        { "name": "Onion & Jalapeno (Double)", "price": 99 },
+        { "name": "Onion & Capsicum (Double)", "price": 89 },
+        { "name": "Corn & Tomato (Double)", "price": 89 },
+        { "name": "Jalapeno & Paneer (Double)", "price": 120 },
+        { "name": "Paneer & Onion (Double)", "price": 100 },
+        { "name": "Paneer & Capsicum (Double)", "price": 110 }
+      ]
+    },
+    {
+      "name": "Wraps",
+      "sortOrder": 11,
+      "items": [
+        { "name": "Veg Wrap", "price": 90 },
+        { "name": "Cheesy Saucy Wrap", "price": 100 },
+        { "name": "Paneer Wrap", "price": 110 }
+      ]
+    },
+    {
+      "name": "Fries",
+      "sortOrder": 12,
+      "items": [
+        { "name": "Salt Fries", "price": 60 },
+        { "name": "Peri Peri Fries", "price": 80 }
+      ]
+    },
+    {
+      "name": "Burgers",
+      "sortOrder": 13,
+      "items": [
+        { "name": "Aloo Tikki Burger", "price": 30 },
+        { "name": "Veggie Burger", "price": 45 },
+        { "name": "Cheesy Burger", "price": 45 },
+        { "name": "Double Cheesy Burger", "price": 55 },
+        { "name": "Achari Burger", "price": 50 },
+        { "name": "Spicy Cheesy Burger", "price": 60 },
+        { "name": "Paneer Burger", "price": 70 },
+        { "name": "Veg. Supreme Burger", "price": 90 },
+        { "name": "Double Decker Burger", "price": 100 },
+        { "name": "Chowmein Burger", "price": 50 },
+        { "name": "Chowmein Cheese Burger", "price": 60 }
+      ]
+    }
+  ]
+}
