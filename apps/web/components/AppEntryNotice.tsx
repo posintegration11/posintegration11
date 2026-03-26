@@ -1,35 +1,40 @@
 "use client";
 
-import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
+
+export const POS_SHOW_ENTRY_NOTICE_KEY = "pos-show-entry-notice";
 
 const AUTO_HIDE_MS = 7000;
 
-/** Shown each time the platform admin area is entered (in-app banner, not system notifications). */
-export function PlatformEntryNotice() {
-  const pathname = usePathname();
+/** After staff/restaurant login (not platform). Set flag in sessionStorage on login success. */
+export function AppEntryNotice() {
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
-    if (!pathname.startsWith("/platform")) return;
-    setVisible(true);
-    const t = window.setTimeout(() => setVisible(false), AUTO_HIDE_MS);
-    return () => window.clearTimeout(t);
-  }, [pathname]);
+    try {
+      if (sessionStorage.getItem(POS_SHOW_ENTRY_NOTICE_KEY) !== "1") return;
+      sessionStorage.removeItem(POS_SHOW_ENTRY_NOTICE_KEY);
+      setVisible(true);
+      const t = window.setTimeout(() => setVisible(false), AUTO_HIDE_MS);
+      return () => window.clearTimeout(t);
+    } catch {
+      /* private mode */
+    }
+  }, []);
 
   if (!visible) return null;
 
   return (
     <div
-      className="safe-pt pointer-events-none fixed left-0 right-0 top-0 z-[200] flex justify-center px-3 pt-3"
+      className="pointer-events-none fixed left-0 right-0 top-0 z-[200] flex justify-center px-3 pt-[max(0.75rem,env(safe-area-inset-top,0px))]"
       role="status"
       aria-live="polite"
     >
       <div className="pointer-events-auto flex max-w-lg items-start gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 shadow-lg">
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold text-[var(--text)]">Platform admin</p>
+          <p className="text-sm font-semibold text-[var(--text)]">Signed in</p>
           <p className="mt-1 text-xs text-[var(--muted)]">
-            Super admin panel is active. Sign out when finished on shared devices.
+            You are in the restaurant POS. Sign out when finished on shared devices.
           </p>
         </div>
         <button

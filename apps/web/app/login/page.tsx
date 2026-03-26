@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { api } from "@/lib/api";
+import { POS_SHOW_ENTRY_NOTICE_KEY } from "@/components/AppEntryNotice";
 import { setSession } from "@/lib/auth";
 
 export default function LoginPage() {
@@ -26,6 +27,11 @@ export default function LoginPage() {
       if (res.user.role === "SUPER_ADMIN") {
         router.replace("/platform");
       } else {
+        try {
+          sessionStorage.setItem(POS_SHOW_ENTRY_NOTICE_KEY, "1");
+        } catch {
+          /* ignore */
+        }
         router.replace("/dashboard");
       }
     } catch (err) {
