@@ -1,23 +1,29 @@
 import type { NextFunction, Request, Response } from "express";
 import jwt, { type SignOptions } from "jsonwebtoken";
-import type { UserRole } from "@prisma/client";
-import { getEnv } from "../config/env.js";
+import { UserRole, UserStatus } from "@prisma/client";
+import { getEnv, platformAdminEmails } from "../config/env.js";
 import { AppError } from "./errorHandler.js";
 import { prisma } from "../prisma.js";
 
-export type AuthPayload = { sub: string; role: UserRole; email: string };
+export type RequestUser = {
+  id: string;
+  role: UserRole;
+  email: string;
+  restaurantId: string | null;
+};
 
 declare global {
   namespace Express {
     interface Request {
-      user?: { id: string; role: UserRole; email: string };
+      user?: RequestUser;
     }
   }
 }
 
-export function signToken(payload: AuthPayload): string {
+/** Minimal JWT: only `sub` (user id). Role/tenant loaded from DB each request. */
+export function signAccessToken(userId: string): string {
   const env = getEnv();
-  return jwt.sign(payload, env.JWT_SECRET, {
+  return jwt.sign({ sub: userId }, env.JWT_SECRET, {
     expiresIn: env.JWT_EXPIRES_IN,
   } as SignOptions);
 }
@@ -28,13 +34,28 @@ export function authJwt(req: Request, _res: Response, next: NextFunction) {
   if (!token) {
     return next(new AppError(401, "Unauthorized"));
   }
-  try {
-    const decoded = jwt.verify(token, getEnv().JWT_SECRET) as AuthPayload;
-    req.user = { id: decoded.sub, role: decoded.role, email: decoded.email };
-    next();
-  } catch {
-    next(new AppError(401, "Invalid token"));
-  }
+  void (async () => {
+    try {
+      const env = getEnv();
+      const decoded = jwt.verify(token, env.JWT_SECRET) as { sub: string };
+      const u = await prisma.user.findUnique({
+        where: { id: decoded.sub },
+        select: { id: true, email: true, role: true, restaurantId: true, status: true },
+      });
+      if (!u || u.status !== UserStatus.ACTIVE) {
+        return next(new AppError(401, "Unauthorized"));
+      }
+      req.user = {
+        id: u.id,
+        email: u.email,
+        role: u.role,
+        restaurantId: u.restaurantId,
+      };
+      next();
+    } catch {
+      next(new AppError(401, "Invalid token"));
+    }
+  })();
 }
 
 export function requireRole(...roles: UserRole[]) {
@@ -49,6 +70,20 @@ export function requireRole(...roles: UserRole[]) {
   };
 }
 
+/** POS + tenant APIs: blocks SUPER_ADMIN and users without a restaurant. */
+export function requireTenantUser(req: Request, _res: Response, next: NextFunction) {
+  if (!req.user) {
+    return next(new AppError(401, "Unauthorized"));
+  }
+  if (req.user.role === UserRole.SUPER_ADMIN) {
+    return next(new AppError(403, "Platform admins use the /platform console, not the POS app"));
+  }
+  if (!req.user.restaurantId) {
+    return next(new AppError(403, "No restaurant assigned"));
+  }
+  next();
+}
+
 export async function optionalAuth(req: Request, _res: Response, next: NextFunction) {
   const header = req.headers.authorization;
   const token = header?.startsWith("Bearer ") ? header.slice(7) : null;
@@ -56,13 +91,33 @@ export async function optionalAuth(req: Request, _res: Response, next: NextFunct
     return next();
   }
   try {
-    const decoded = jwt.verify(token, getEnv().JWT_SECRET) as AuthPayload;
-    const u = await prisma.user.findUnique({ where: { id: decoded.sub } });
-    if (u && u.status === "ACTIVE") {
-      req.user = { id: u.id, role: u.role, email: u.email };
+    const env = getEnv();
+    const decoded = jwt.verify(token, env.JWT_SECRET) as { sub: string };
+    const u = await prisma.user.findUnique({
+      where: { id: decoded.sub },
+      select: { id: true, email: true, role: true, restaurantId: true, status: true },
+    });
+    if (u && u.status === UserStatus.ACTIVE) {
+      req.user = {
+        id: u.id,
+        email: u.email,
+        role: u.role,
+        restaurantId: u.restaurantId,
+      };
     }
   } catch {
     /* ignore */
+  }
+  next();
+}
+
+export function requirePlatformAllowlist(req: Request, _res: Response, next: NextFunction) {
+  if (!req.user || req.user.role !== UserRole.SUPER_ADMIN) {
+    return next(new AppError(403, "Forbidden"));
+  }
+  const allow = platformAdminEmails();
+  if (allow.length === 0 || !allow.includes(req.user.email.toLowerCase())) {
+    return next(new AppError(403, "Forbidden"));
   }
   next();
 }

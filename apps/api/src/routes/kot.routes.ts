@@ -8,14 +8,15 @@ import {
 } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../prisma.js";
-import { authJwt, requireRole } from "../middleware/auth.js";
+import { authJwt, requireRole, requireTenantUser } from "../middleware/auth.js";
 import { AppError } from "../middleware/errorHandler.js";
-import { emitAll } from "../realtime.js";
+import { emitToTenant } from "../realtime.js";
 import { writeAudit } from "../utils/audit.js";
 
 const router = Router();
 
 router.use(authJwt);
+router.use(requireTenantUser);
 
 const kitchenRoles = [UserRole.KITCHEN, UserRole.ADMIN] as const;
 const viewRoles = [UserRole.KITCHEN, UserRole.ADMIN, UserRole.CASHIER] as const;
@@ -37,20 +38,22 @@ function orderItemFromKotItem(status: KOTItemStatus): OrderItemStatus {
 
 router.get("/", requireRole(...viewRoles), async (req, res, next) => {
   try {
+    const rid = req.user!.restaurantId!;
     const status = req.query.status as string | undefined;
     const includeCompleted = req.query.includeCompleted === "true";
 
-    let where: Prisma.KotWhereInput | undefined;
+    let statusFilter: Prisma.KotWhereInput["status"] | undefined;
     if (status) {
-      where = { status: status as KOTStatus };
+      statusFilter = status as KOTStatus;
     } else if (!includeCompleted) {
-      where = {
-        status: { in: [KOTStatus.PENDING, KOTStatus.PREPARING, KOTStatus.READY] },
-      };
+      statusFilter = { in: [KOTStatus.PENDING, KOTStatus.PREPARING, KOTStatus.READY] };
     }
 
     const kots = await prisma.kot.findMany({
-      where,
+      where: {
+        order: { restaurantId: rid },
+        ...(statusFilter ? { status: statusFilter } : {}),
+      },
       orderBy: { createdAt: "asc" },
       include: {
         table: true,
@@ -75,13 +78,20 @@ const patchKotSchema = z.object({
 router.patch("/:id", requireRole(...kitchenRoles), async (req, res, next) => {
   try {
     const id = req.params.id;
+    const rid = req.user!.restaurantId!;
     const body = patchKotSchema.parse(req.body);
+    const existing = await prisma.kot.findFirst({
+      where: { id, order: { restaurantId: rid } },
+    });
+    if (!existing) {
+      throw new AppError(404, "KOT not found");
+    }
     const kot = await prisma.kot.update({
       where: { id },
       data: { status: body.status },
     });
-    await writeAudit(req.user!.id, "KOT_STATUS", "Kot", id, { status: body.status });
-    emitAll("kot:updated");
+    await writeAudit(req.user!.id, "KOT_STATUS", "Kot", id, { status: body.status }, rid);
+    emitToTenant(rid, "kot:updated");
     res.json(kot);
   } catch (e) {
     next(e);
@@ -95,10 +105,11 @@ const patchKotItemSchema = z.object({
 router.patch("/items/:itemId", requireRole(...kitchenRoles), async (req, res, next) => {
   try {
     const itemId = req.params.itemId;
+    const rid = req.user!.restaurantId!;
     const body = patchKotItemSchema.parse(req.body);
 
-    const kotItem = await prisma.kotItem.findUnique({
-      where: { id: itemId },
+    const kotItem = await prisma.kotItem.findFirst({
+      where: { id: itemId, kot: { order: { restaurantId: rid } } },
       include: { kot: true },
     });
     if (!kotItem) {
@@ -120,9 +131,9 @@ router.patch("/items/:itemId", requireRole(...kitchenRoles), async (req, res, ne
 
     await writeAudit(req.user!.id, "KOT_ITEM_STATUS", "KotItem", itemId, {
       status: body.status,
-    });
-    emitAll("kot:updated");
-    emitAll("order:updated", { orderId: kotItem.kot.orderId });
+    }, rid);
+    emitToTenant(rid, "kot:updated");
+    emitToTenant(rid, "order:updated", { orderId: kotItem.kot.orderId });
     res.json({ ok: true });
   } catch (e) {
     next(e);

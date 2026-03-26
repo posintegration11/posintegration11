@@ -10,15 +10,8 @@ export function getIo(): IOServer | null {
   return io;
 }
 
-export function emitFloor(event: string, payload?: unknown) {
-  io?.to("floor").emit(event, payload);
-}
-
-export function emitKitchen(event: string, payload?: unknown) {
-  io?.to("kitchen").emit(event, payload);
-}
-
-export function emitAll(event: string, payload?: unknown) {
-  io?.to("floor").emit(event, payload);
-  io?.to("kitchen").emit(event, payload);
+/** Emit to all floor + kitchen clients for one restaurant. */
+export function emitToTenant(restaurantId: string, event: string, payload?: unknown) {
+  io?.to(`tenant:${restaurantId}:floor`).emit(event, payload);
+  io?.to(`tenant:${restaurantId}:kitchen`).emit(event, payload);
 }

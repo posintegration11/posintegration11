@@ -219,7 +219,7 @@ export default function ReportsPage() {
           </p>
         </div>
         <Link
-          href="/"
+          href="/dashboard"
           className="text-sm font-medium text-[var(--accent)] hover:underline lg:shrink-0"
         >
           ← Dashboard

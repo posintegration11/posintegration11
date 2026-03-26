@@ -1,6 +1,6 @@
 /** GET/PUT /api/v1/settings */
 export type RestaurantSettings = {
-  id: string;
+  restaurantId: string;
   name: string;
   logoUrl: string | null;
   address: string;

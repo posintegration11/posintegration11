@@ -8,9 +8,9 @@ import {
 } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../prisma.js";
-import { authJwt, requireRole } from "../middleware/auth.js";
+import { authJwt, requireRole, requireTenantUser } from "../middleware/auth.js";
 import { AppError } from "../middleware/errorHandler.js";
-import { emitAll } from "../realtime.js";
+import { emitToTenant } from "../realtime.js";
 import { writeAudit } from "../utils/audit.js";
 import { makeInvoiceNumber } from "../utils/refs.js";
 import { persistOrderTotals } from "../services/orderTotals.js";
@@ -18,6 +18,7 @@ import { persistOrderTotals } from "../services/orderTotals.js";
 const router = Router();
 
 router.use(authJwt);
+router.use(requireTenantUser);
 
 const billingRoles = [UserRole.ADMIN, UserRole.CASHIER] as const;
 
@@ -28,10 +29,10 @@ const recalcSchema = z.object({
 router.post("/orders/:orderId/recalculate", requireRole(...billingRoles), async (req, res, next) => {
   try {
     const orderId = req.params.orderId;
-    const body = recalcSchema.parse(req.body);
+    const rid = req.user!.restaurantId!;
 
-    const order = await prisma.order.findUnique({
-      where: { id: orderId },
+    const order = await prisma.order.findFirst({
+      where: { id: orderId, restaurantId: rid },
     });
     if (!order) {
       throw new AppError(404, "Order not found");
@@ -39,6 +40,8 @@ router.post("/orders/:orderId/recalculate", requireRole(...billingRoles), async 
     if (order.status !== OrderStatus.READY_FOR_BILLING) {
       throw new AppError(400, "Order must be ready for billing to recalculate");
     }
+
+    const body = recalcSchema.parse(req.body);
 
     const discountTotal = body.discountTotal ?? Number(order.discountTotal);
     const updated = await persistOrderTotals(orderId, discountTotal);
@@ -55,8 +58,8 @@ router.post("/orders/:orderId/recalculate", requireRole(...billingRoles), async 
       discountTotal,
       taxTotal,
       grandTotal,
-    });
-    emitAll("order:updated", { orderId });
+    }, rid);
+    emitToTenant(rid, "order:updated", { orderId });
     res.json(updated);
   } catch (e) {
     next(e);
@@ -66,9 +69,10 @@ router.post("/orders/:orderId/recalculate", requireRole(...billingRoles), async 
 router.post("/orders/:orderId/invoice", requireRole(...billingRoles), async (req, res, next) => {
   try {
     const orderId = req.params.orderId;
+    const rid = req.user!.restaurantId!;
 
-    const order = await prisma.order.findUnique({
-      where: { id: orderId },
+    const order = await prisma.order.findFirst({
+      where: { id: orderId, restaurantId: rid },
       include: { invoices: true },
     });
     if (!order) {
@@ -85,6 +89,7 @@ router.post("/orders/:orderId/invoice", requireRole(...billingRoles), async (req
 
     const invoice = await prisma.invoice.create({
       data: {
+        restaurantId: rid,
         orderId,
         invoiceNumber: makeInvoiceNumber(),
         subtotal: order.subtotal,
@@ -95,8 +100,8 @@ router.post("/orders/:orderId/invoice", requireRole(...billingRoles), async (req
       },
     });
 
-    await writeAudit(req.user!.id, "INVOICE_CREATE", "Invoice", invoice.id, { orderId });
-    emitAll("order:updated", { orderId });
+    await writeAudit(req.user!.id, "INVOICE_CREATE", "Invoice", invoice.id, { orderId }, rid);
+    emitToTenant(rid, "order:updated", { orderId });
     res.status(201).json(invoice);
   } catch (e) {
     next(e);
@@ -118,10 +123,11 @@ const paySchema = z.object({
 router.post("/invoices/:invoiceId/pay", requireRole(...billingRoles), async (req, res, next) => {
   try {
     const invoiceId = req.params.invoiceId;
+    const rid = req.user!.restaurantId!;
     const body = paySchema.parse(req.body);
 
-    const invoice = await prisma.invoice.findUnique({
-      where: { id: invoiceId },
+    const invoice = await prisma.invoice.findFirst({
+      where: { id: invoiceId, restaurantId: rid },
       include: { order: true, payments: true },
     });
     if (!invoice) {
@@ -173,11 +179,11 @@ router.post("/invoices/:invoiceId/pay", requireRole(...billingRoles), async (req
 
     await writeAudit(req.user!.id, "INVOICE_PAID", "Invoice", invoiceId, {
       payments: body.payments,
-    });
-    emitAll("table:updated");
-    emitAll("order:updated", { orderId: invoice.orderId });
-    const fresh = await prisma.invoice.findUnique({
-      where: { id: invoiceId },
+    }, rid);
+    emitToTenant(rid, "table:updated");
+    emitToTenant(rid, "order:updated", { orderId: invoice.orderId });
+    const fresh = await prisma.invoice.findFirst({
+      where: { id: invoiceId, restaurantId: rid },
       include: { payments: true, order: { include: { table: true, items: true } } },
     });
     res.json(fresh);

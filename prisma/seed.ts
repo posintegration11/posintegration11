@@ -1,15 +1,37 @@
-import { PrismaClient, UserRole, UserStatus, RestaurantTableStatus, CategoryStatus } from "@prisma/client";
+import {
+  PrismaClient,
+  RestaurantStatus,
+  RestaurantTableStatus,
+  UserRole,
+  UserStatus,
+  CategoryStatus,
+} from "@prisma/client";
 import bcrypt from "bcryptjs";
 
 const prisma = new PrismaClient();
 
+const LEGACY_RESTAURANT_ID = "a0000000-0000-0000-0000-000000000001";
+
 async function main() {
   const passwordHash = await bcrypt.hash("password123", 10);
 
-  await prisma.restaurantSettings.upsert({
-    where: { id: "default" },
+  await prisma.restaurant.upsert({
+    where: { id: LEGACY_RESTAURANT_ID },
     create: {
-      id: "default",
+      id: LEGACY_RESTAURANT_ID,
+      name: "Grand Hotel Restaurant",
+      address: "123 Main Street, City",
+      status: RestaurantStatus.ACTIVE,
+    },
+    update: {
+      status: RestaurantStatus.ACTIVE,
+    },
+  });
+
+  await prisma.restaurantSettings.upsert({
+    where: { restaurantId: LEGACY_RESTAURANT_ID },
+    create: {
+      restaurantId: LEGACY_RESTAURANT_ID,
       name: "Grand Hotel Restaurant",
       address: "123 Main Street, City",
       gstLabel: "GST",
@@ -37,14 +59,37 @@ async function main() {
         passwordHash,
         role: u.role,
         status: UserStatus.ACTIVE,
+        restaurantId: LEGACY_RESTAURANT_ID,
       },
-      update: { passwordHash, role: u.role },
+      update: { passwordHash, role: u.role, restaurantId: LEGACY_RESTAURANT_ID },
     });
   }
 
-  await prisma.restaurantTable.upsert({
-    where: { tableNumber: 0 },
+  const platformEmail = (process.env.PLATFORM_ADMIN_EMAIL ?? "platform@pos.local").toLowerCase();
+  await prisma.user.upsert({
+    where: { email: platformEmail },
     create: {
+      name: "Platform Admin",
+      email: platformEmail,
+      passwordHash,
+      role: UserRole.SUPER_ADMIN,
+      status: UserStatus.ACTIVE,
+      restaurantId: null,
+    },
+    update: {
+      passwordHash,
+      role: UserRole.SUPER_ADMIN,
+      restaurantId: null,
+      status: UserStatus.ACTIVE,
+    },
+  });
+
+  await prisma.restaurantTable.upsert({
+    where: {
+      restaurantId_tableNumber: { restaurantId: LEGACY_RESTAURANT_ID, tableNumber: 0 },
+    },
+    create: {
+      restaurantId: LEGACY_RESTAURANT_ID,
       tableNumber: 0,
       name: "Walk-in",
       capacity: null,
@@ -56,8 +101,11 @@ async function main() {
 
   for (let n = 1; n <= 10; n++) {
     await prisma.restaurantTable.upsert({
-      where: { tableNumber: n },
+      where: {
+        restaurantId_tableNumber: { restaurantId: LEGACY_RESTAURANT_ID, tableNumber: n },
+      },
       create: {
+        restaurantId: LEGACY_RESTAURANT_ID,
         tableNumber: n,
         name: `Table ${n}`,
         capacity: 4,
@@ -77,11 +125,18 @@ async function main() {
 
   const catRecords: { id: string; name: string }[] = [];
   for (const c of categories) {
-    const existing = await prisma.menuCategory.findFirst({ where: { name: c.name } });
+    const existing = await prisma.menuCategory.findFirst({
+      where: { name: c.name, restaurantId: LEGACY_RESTAURANT_ID },
+    });
     const row =
       existing ??
       (await prisma.menuCategory.create({
-        data: { name: c.name, sortOrder: c.sortOrder, status: CategoryStatus.ACTIVE },
+        data: {
+          restaurantId: LEGACY_RESTAURANT_ID,
+          name: c.name,
+          sortOrder: c.sortOrder,
+          status: CategoryStatus.ACTIVE,
+        },
       }));
     catRecords.push({ id: row.id, name: row.name });
   }
@@ -119,7 +174,11 @@ async function main() {
     }
   }
 
-  console.log("Seed completed. Login: admin@pos.local / password123 (all users same password)");
+  console.log(
+    "Seed completed.\n  Tenant: admin@pos.local / password123 (same for staff)\n  Platform: " +
+      platformEmail +
+      " / password123",
+  );
 }
 
 main()

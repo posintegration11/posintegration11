@@ -7,25 +7,33 @@ import {
   UserRole,
 } from "@prisma/client";
 import { prisma } from "../prisma.js";
-import { authJwt, requireRole } from "../middleware/auth.js";
+import { authJwt, requireRole, requireTenantUser } from "../middleware/auth.js";
 
 const router = Router();
 
 router.use(authJwt);
+router.use(requireTenantUser);
 router.use(requireRole(UserRole.ADMIN, UserRole.CASHIER));
 
 router.get("/overview", async (req, res, next) => {
   try {
+    const rid = req.user!.restaurantId!;
     const { from, to } = parseRange(req);
 
     const paymentTotals = prisma.payment.aggregate({
-      where: { paidAt: { gte: from, lte: to } },
+      where: {
+        paidAt: { gte: from, lte: to },
+        invoice: { restaurantId: rid },
+      },
       _sum: { amount: true },
     });
 
     const settledInvoiceGroups = prisma.payment.groupBy({
       by: ["invoiceId"],
-      where: { paidAt: { gte: from, lte: to } },
+      where: {
+        paidAt: { gte: from, lte: to },
+        invoice: { restaurantId: rid },
+      },
     });
 
     const [paySum, invoiceIdGroups, activeOrders, paymentRows, busyDineIn] = await Promise.all([
@@ -33,6 +41,7 @@ router.get("/overview", async (req, res, next) => {
       settledInvoiceGroups,
       prisma.order.count({
         where: {
+          restaurantId: rid,
           status: {
             in: [
               OrderStatus.OPEN,
@@ -44,7 +53,10 @@ router.get("/overview", async (req, res, next) => {
         },
       }),
       prisma.payment.findMany({
-        where: { paidAt: { gte: from, lte: to } },
+        where: {
+          paidAt: { gte: from, lte: to },
+          invoice: { restaurantId: rid },
+        },
         orderBy: { paidAt: "desc" },
         take: 48,
         include: {
@@ -55,6 +67,7 @@ router.get("/overview", async (req, res, next) => {
       }),
       prisma.restaurantTable.count({
         where: {
+          restaurantId: rid,
           isWalkIn: false,
           status: { not: RestaurantTableStatus.FREE },
         },
@@ -103,10 +116,6 @@ router.get("/overview", async (req, res, next) => {
   }
 });
 
-/**
- * Date range for reports. If `from`/`to` query params are full ISO datetimes (browser local day),
- * uses them as-is. Otherwise falls back to calendar start/end of those dates in server local time.
- */
 function parseRange(req: { query: Record<string, unknown> }) {
   const today = new Date();
   const fromQ = req.query.from ? String(req.query.from) : "";
@@ -132,9 +141,11 @@ function parseRange(req: { query: Record<string, unknown> }) {
 
 router.get("/daily-sales", async (req, res, next) => {
   try {
+    const rid = req.user!.restaurantId!;
     const { from, to } = parseRange(req);
     const invoices = await prisma.invoice.findMany({
       where: {
+        restaurantId: rid,
         createdAt: { gte: from, lte: to },
         paymentStatus: PaymentStatus.PAID,
       },
@@ -148,9 +159,10 @@ router.get("/daily-sales", async (req, res, next) => {
 
 router.get("/orders-summary", async (req, res, next) => {
   try {
+    const rid = req.user!.restaurantId!;
     const { from, to } = parseRange(req);
     const orders = await prisma.order.findMany({
-      where: { openedAt: { gte: from, lte: to } },
+      where: { restaurantId: rid, openedAt: { gte: from, lte: to } },
     });
     const byStatus = orders.reduce<Record<string, number>>((acc, o) => {
       acc[o.status] = (acc[o.status] ?? 0) + 1;
@@ -164,9 +176,13 @@ router.get("/orders-summary", async (req, res, next) => {
 
 router.get("/payment-summary", async (req, res, next) => {
   try {
+    const rid = req.user!.restaurantId!;
     const { from, to } = parseRange(req);
     const payments = await prisma.payment.findMany({
-      where: { paidAt: { gte: from, lte: to } },
+      where: {
+        paidAt: { gte: from, lte: to },
+        invoice: { restaurantId: rid },
+      },
       include: { invoice: true },
     });
     const byMode = payments.reduce<Record<string, number>>((acc, p) => {
@@ -182,9 +198,13 @@ router.get("/payment-summary", async (req, res, next) => {
 
 router.get("/top-items", async (req, res, next) => {
   try {
+    const rid = req.user!.restaurantId!;
     const { from, to } = parseRange(req);
     const payments = await prisma.payment.findMany({
-      where: { paidAt: { gte: from, lte: to } },
+      where: {
+        paidAt: { gte: from, lte: to },
+        invoice: { restaurantId: rid },
+      },
       select: { invoiceId: true },
     });
     const invoiceIds = [...new Set(payments.map((p) => p.invoiceId))];
@@ -193,13 +213,14 @@ router.get("/top-items", async (req, res, next) => {
       return;
     }
     const invoices = await prisma.invoice.findMany({
-      where: { id: { in: invoiceIds } },
+      where: { id: { in: invoiceIds }, restaurantId: rid },
       select: { orderId: true },
     });
     const orderIds = [...new Set(invoices.map((i) => i.orderId))];
     const items = await prisma.orderItem.findMany({
       where: {
         orderId: { in: orderIds },
+        order: { restaurantId: rid },
         status: { not: OrderItemStatus.CANCELLED },
       },
     });
@@ -220,9 +241,10 @@ router.get("/top-items", async (req, res, next) => {
 
 router.get("/table-stats", async (req, res, next) => {
   try {
+    const rid = req.user!.restaurantId!;
     const { from, to } = parseRange(req);
     const orders = await prisma.order.findMany({
-      where: { openedAt: { gte: from, lte: to } },
+      where: { restaurantId: rid, openedAt: { gte: from, lte: to } },
       include: { table: true },
     });
     const byTable = orders.reduce<Record<string, number>>((acc, o) => {
@@ -238,16 +260,18 @@ router.get("/table-stats", async (req, res, next) => {
 
 router.get("/cancellations", async (req, res, next) => {
   try {
+    const rid = req.user!.restaurantId!;
     const { from, to } = parseRange(req);
     const cancelledItems = await prisma.orderItem.findMany({
       where: {
         status: OrderItemStatus.CANCELLED,
-        order: { openedAt: { gte: from, lte: to } },
+        order: { restaurantId: rid, openedAt: { gte: from, lte: to } },
       },
       include: { order: { include: { table: true } } },
     });
     const cancelledOrders = await prisma.order.findMany({
       where: {
+        restaurantId: rid,
         status: OrderStatus.CANCELLED,
         openedAt: { gte: from, lte: to },
       },

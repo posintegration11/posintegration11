@@ -13,7 +13,9 @@ export async function persistOrderTotals(
     return null;
   }
 
-  const settings = await prisma.restaurantSettings.findUnique({ where: { id: "default" } });
+  const settings = await prisma.restaurantSettings.findUnique({
+    where: { restaurantId: order.restaurantId },
+  });
   const taxPercent = settings ? Number(settings.taxPercent) : 0;
 
   let subtotal = 0;

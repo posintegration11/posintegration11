@@ -11,6 +11,8 @@ import { billingRouter } from "./routes/billing.routes.js";
 import { reportsRouter } from "./routes/reports.routes.js";
 import { settingsRouter } from "./routes/settings.routes.js";
 import { usersRouter } from "./routes/users.routes.js";
+import { platformRouter } from "./routes/platform.routes.js";
+import { demoRouter } from "./routes/demo.routes.js";
 
 export function createApp() {
   const app = express();
@@ -38,6 +40,8 @@ export function createApp() {
   app.use("/api/v1/reports", reportsRouter);
   app.use("/api/v1/settings", settingsRouter);
   app.use("/api/v1/users", usersRouter);
+  app.use("/api/v1/platform", platformRouter);
+  app.use("/api/v1", demoRouter);
 
   app.use(errorHandler);
   return app;

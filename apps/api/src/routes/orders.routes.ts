@@ -9,15 +9,16 @@ import {
 } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../prisma.js";
-import { authJwt, requireRole } from "../middleware/auth.js";
+import { authJwt, requireRole, requireTenantUser } from "../middleware/auth.js";
 import { AppError } from "../middleware/errorHandler.js";
-import { emitAll } from "../realtime.js";
+import { emitToTenant } from "../realtime.js";
 import { writeAudit } from "../utils/audit.js";
 import { persistOrderTotals } from "../services/orderTotals.js";
 
 const router = Router();
 
 router.use(authJwt);
+router.use(requireTenantUser);
 
 const modifyRoles = [UserRole.ADMIN, UserRole.CASHIER, UserRole.WAITER] as const;
 const billingRoles = [UserRole.ADMIN, UserRole.CASHIER] as const;
@@ -33,8 +34,9 @@ function canEditItems(status: OrderStatus) {
 router.get("/:id", requireRole(UserRole.ADMIN, UserRole.CASHIER, UserRole.WAITER), async (req, res, next) => {
   try {
     const id = req.params.id;
-    const order = await prisma.order.findUnique({
-      where: { id },
+    const rid = req.user!.restaurantId!;
+    const order = await prisma.order.findFirst({
+      where: { id, restaurantId: rid },
       include: {
         items: { orderBy: { id: "asc" } },
         table: true,
@@ -60,9 +62,10 @@ const addItemSchema = z.object({
 router.post("/:id/items", requireRole(...modifyRoles), async (req, res, next) => {
   try {
     const orderId = z.string().uuid().parse(req.params.id);
+    const rid = req.user!.restaurantId!;
     const body = addItemSchema.parse(req.body);
 
-    const order = await prisma.order.findUnique({ where: { id: orderId } });
+    const order = await prisma.order.findFirst({ where: { id: orderId, restaurantId: rid } });
     if (!order) {
       throw new AppError(404, "Order not found");
     }
@@ -71,7 +74,11 @@ router.post("/:id/items", requireRole(...modifyRoles), async (req, res, next) =>
     }
 
     const menuItem = await prisma.menuItem.findFirst({
-      where: { id: body.menuItemId, isAvailable: true },
+      where: {
+        id: body.menuItemId,
+        isAvailable: true,
+        category: { restaurantId: rid },
+      },
     });
     if (!menuItem) {
       throw new AppError(404, "Menu item not found");
@@ -88,11 +95,7 @@ router.post("/:id/items", requireRole(...modifyRoles), async (req, res, next) =>
     } as const;
 
     const { item, created } = await prisma.$transaction(async (tx) => {
-      // `orders.id` is TEXT in Postgres with default Prisma mapping (not @db.Uuid) — compare as text.
-      await tx.$executeRawUnsafe(
-        `SELECT id FROM orders WHERE id::text = $1 FOR UPDATE`,
-        orderId
-      );
+      await tx.$executeRawUnsafe(`SELECT id FROM orders WHERE id::text = $1 FOR UPDATE`, orderId);
 
       const duplicates = await tx.orderItem.findMany({
         where: lineMatchWhere,
@@ -161,19 +164,33 @@ router.post("/:id/items", requireRole(...modifyRoles), async (req, res, next) =>
     });
 
     if (created) {
-      await writeAudit(req.user!.id, "ORDER_ITEM_ADD", "OrderItem", item.id, {
-        orderId,
-        menuItemId: body.menuItemId,
-      });
+      await writeAudit(
+        req.user!.id,
+        "ORDER_ITEM_ADD",
+        "OrderItem",
+        item.id,
+        {
+          orderId,
+          menuItemId: body.menuItemId,
+        },
+        rid
+      );
     } else {
-      await writeAudit(req.user!.id, "ORDER_ITEM_QTY_ADD", "OrderItem", item.id, {
-        orderId,
-        menuItemId: body.menuItemId,
-        quantityAdded: body.quantity,
-      });
+      await writeAudit(
+        req.user!.id,
+        "ORDER_ITEM_QTY_ADD",
+        "OrderItem",
+        item.id,
+        {
+          orderId,
+          menuItemId: body.menuItemId,
+          quantityAdded: body.quantity,
+        },
+        rid
+      );
     }
-    emitAll("order:updated", { orderId });
-    emitAll("table:updated");
+    emitToTenant(rid, "order:updated", { orderId });
+    emitToTenant(rid, "table:updated");
     res.status(created ? 201 : 200).json(item);
   } catch (e) {
     next(e);
@@ -188,9 +205,10 @@ const patchItemSchema = z.object({
 router.patch("/:id/items/:itemId", requireRole(...modifyRoles), async (req, res, next) => {
   try {
     const { id: orderId, itemId } = req.params;
+    const rid = req.user!.restaurantId!;
     const body = patchItemSchema.parse(req.body);
 
-    const order = await prisma.order.findUnique({ where: { id: orderId } });
+    const order = await prisma.order.findFirst({ where: { id: orderId, restaurantId: rid } });
     if (!order) {
       throw new AppError(404, "Order not found");
     }
@@ -221,8 +239,15 @@ router.patch("/:id/items/:itemId", requireRole(...modifyRoles), async (req, res,
       },
     });
 
-    await writeAudit(req.user!.id, "ORDER_ITEM_UPDATE", "OrderItem", itemId, body as Record<string, unknown>);
-    emitAll("order:updated", { orderId });
+    await writeAudit(
+      req.user!.id,
+      "ORDER_ITEM_UPDATE",
+      "OrderItem",
+      itemId,
+      body as Record<string, unknown>,
+      rid
+    );
+    emitToTenant(rid, "order:updated", { orderId });
     res.json(updated);
   } catch (e) {
     next(e);
@@ -232,8 +257,9 @@ router.patch("/:id/items/:itemId", requireRole(...modifyRoles), async (req, res,
 router.delete("/:id/items/:itemId", requireRole(...modifyRoles), async (req, res, next) => {
   try {
     const { id: orderId, itemId } = req.params;
+    const rid = req.user!.restaurantId!;
 
-    const order = await prisma.order.findUnique({ where: { id: orderId } });
+    const order = await prisma.order.findFirst({ where: { id: orderId, restaurantId: rid } });
     if (!order) {
       throw new AppError(404, "Order not found");
     }
@@ -253,12 +279,19 @@ router.delete("/:id/items/:itemId", requireRole(...modifyRoles), async (req, res
       data: { status: OrderItemStatus.CANCELLED, lineTotal: "0" },
     });
 
-    await writeAudit(req.user!.id, "ORDER_ITEM_CANCEL", "OrderItem", itemId, {
-      orderId,
-      previousStatus: existing.status,
-    });
-    emitAll("order:updated", { orderId });
-    emitAll("table:updated");
+    await writeAudit(
+      req.user!.id,
+      "ORDER_ITEM_CANCEL",
+      "OrderItem",
+      itemId,
+      {
+        orderId,
+        previousStatus: existing.status,
+      },
+      rid
+    );
+    emitToTenant(rid, "order:updated", { orderId });
+    emitToTenant(rid, "table:updated");
     res.json(updated);
   } catch (e) {
     next(e);
@@ -268,9 +301,10 @@ router.delete("/:id/items/:itemId", requireRole(...modifyRoles), async (req, res
 router.post("/:id/send-to-kitchen", requireRole(...modifyRoles), async (req, res, next) => {
   try {
     const orderId = req.params.id;
+    const rid = req.user!.restaurantId!;
 
-    const order = await prisma.order.findUnique({
-      where: { id: orderId },
+    const order = await prisma.order.findFirst({
+      where: { id: orderId, restaurantId: rid },
       include: { items: true, table: true },
     });
     if (!order) {
@@ -314,12 +348,10 @@ router.post("/:id/send-to-kitchen", requireRole(...modifyRoles), async (req, res
       });
     });
 
-    await writeAudit(req.user!.id, "KOT_SENT", "Order", orderId, {
-      itemCount: toSend.length,
-    });
-    emitAll("kot:updated");
-    emitAll("order:updated", { orderId });
-    emitAll("table:updated");
+    await writeAudit(req.user!.id, "KOT_SENT", "Order", orderId, { itemCount: toSend.length }, rid);
+    emitToTenant(rid, "kot:updated");
+    emitToTenant(rid, "order:updated", { orderId });
+    emitToTenant(rid, "table:updated");
     res.json({ ok: true });
   } catch (e) {
     next(e);
@@ -329,9 +361,10 @@ router.post("/:id/send-to-kitchen", requireRole(...modifyRoles), async (req, res
 router.post("/:id/ready-for-billing", requireRole(...billingRoles), async (req, res, next) => {
   try {
     const orderId = req.params.id;
+    const rid = req.user!.restaurantId!;
 
-    const order = await prisma.order.findUnique({
-      where: { id: orderId },
+    const order = await prisma.order.findFirst({
+      where: { id: orderId, restaurantId: rid },
       include: { items: true },
     });
     if (!order) {
@@ -359,9 +392,9 @@ router.post("/:id/ready-for-billing", requireRole(...billingRoles), async (req, 
 
     await persistOrderTotals(orderId);
 
-    await writeAudit(req.user!.id, "ORDER_READY_BILLING", "Order", orderId, {});
-    emitAll("table:updated");
-    emitAll("order:updated", { orderId });
+    await writeAudit(req.user!.id, "ORDER_READY_BILLING", "Order", orderId, {}, rid);
+    emitToTenant(rid, "table:updated");
+    emitToTenant(rid, "order:updated", { orderId });
     res.json({ ok: true });
   } catch (e) {
     next(e);

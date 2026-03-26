@@ -3,18 +3,23 @@ import bcrypt from "bcryptjs";
 import { UserRole, UserStatus } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../prisma.js";
-import { authJwt, requireRole } from "../middleware/auth.js";
+import { authJwt, requireRole, requireTenantUser } from "../middleware/auth.js";
 import { AppError } from "../middleware/errorHandler.js";
 import { writeAudit } from "../utils/audit.js";
 
 const router = Router();
 
+const roleSchema = z.enum(["ADMIN", "CASHIER", "WAITER", "KITCHEN"]);
+
 router.use(authJwt);
+router.use(requireTenantUser);
 router.use(requireRole(UserRole.ADMIN));
 
-router.get("/", async (_req, res, next) => {
+router.get("/", async (req, res, next) => {
   try {
+    const rid = req.user!.restaurantId!;
     const users = await prisma.user.findMany({
+      where: { restaurantId: rid },
       orderBy: { createdAt: "desc" },
       select: {
         id: true,
@@ -36,12 +41,13 @@ const createSchema = z.object({
   name: z.string().min(1),
   email: z.string().email(),
   password: z.string().min(6),
-  role: z.nativeEnum(UserRole),
+  role: roleSchema,
 });
 
 router.post("/", async (req, res, next) => {
   try {
     const body = createSchema.parse(req.body);
+    const rid = req.user!.restaurantId!;
     const exists = await prisma.user.findUnique({ where: { email: body.email } });
     if (exists) {
       throw new AppError(409, "Email already in use");
@@ -54,6 +60,7 @@ router.post("/", async (req, res, next) => {
         passwordHash,
         role: body.role,
         status: UserStatus.ACTIVE,
+        restaurantId: rid,
       },
       select: {
         id: true,
@@ -64,7 +71,7 @@ router.post("/", async (req, res, next) => {
         createdAt: true,
       },
     });
-    await writeAudit(req.user!.id, "USER_CREATE", "User", user.id, { email: user.email });
+    await writeAudit(req.user!.id, "USER_CREATE", "User", user.id, { email: user.email }, rid);
     res.status(201).json(user);
   } catch (e) {
     next(e);
@@ -73,14 +80,19 @@ router.post("/", async (req, res, next) => {
 
 const patchSchema = z.object({
   name: z.string().min(1).optional(),
-  role: z.nativeEnum(UserRole).optional(),
+  role: roleSchema.optional(),
   status: z.nativeEnum(UserStatus).optional(),
 });
 
 router.patch("/:id", async (req, res, next) => {
   try {
     const id = req.params.id;
+    const rid = req.user!.restaurantId!;
     const body = patchSchema.parse(req.body);
+    const target = await prisma.user.findFirst({ where: { id, restaurantId: rid } });
+    if (!target) {
+      throw new AppError(404, "User not found");
+    }
     const user = await prisma.user.update({
       where: { id },
       data: body,
@@ -93,7 +105,7 @@ router.patch("/:id", async (req, res, next) => {
         updatedAt: true,
       },
     });
-    await writeAudit(req.user!.id, "USER_UPDATE", "User", id, body as Record<string, unknown>);
+    await writeAudit(req.user!.id, "USER_UPDATE", "User", id, body as Record<string, unknown>, rid);
     res.json(user);
   } catch (e) {
     next(e);
@@ -107,10 +119,15 @@ const resetSchema = z.object({
 router.post("/:id/reset-password", async (req, res, next) => {
   try {
     const id = req.params.id;
+    const rid = req.user!.restaurantId!;
     const body = resetSchema.parse(req.body);
+    const target = await prisma.user.findFirst({ where: { id, restaurantId: rid } });
+    if (!target) {
+      throw new AppError(404, "User not found");
+    }
     const passwordHash = await bcrypt.hash(body.password, 10);
     await prisma.user.update({ where: { id }, data: { passwordHash } });
-    await writeAudit(req.user!.id, "USER_RESET_PASSWORD", "User", id, {});
+    await writeAudit(req.user!.id, "USER_RESET_PASSWORD", "User", id, {}, rid);
     res.json({ ok: true });
   } catch (e) {
     next(e);

@@ -2,20 +2,22 @@ import { Router } from "express";
 import { UserRole } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../prisma.js";
-import { authJwt, requireRole } from "../middleware/auth.js";
+import { authJwt, requireRole, requireTenantUser } from "../middleware/auth.js";
 import { AppError } from "../middleware/errorHandler.js";
 import { writeAudit } from "../utils/audit.js";
 
 const router = Router();
 
 router.use(authJwt);
+router.use(requireTenantUser);
 
-router.get("/", async (_req, res, next) => {
+router.get("/", async (req, res, next) => {
   try {
-    let s = await prisma.restaurantSettings.findUnique({ where: { id: "default" } });
+    const rid = req.user!.restaurantId!;
+    let s = await prisma.restaurantSettings.findUnique({ where: { restaurantId: rid } });
     if (!s) {
       s = await prisma.restaurantSettings.create({
-        data: { id: "default" },
+        data: { restaurantId: rid },
       });
     }
     res.json(s);
@@ -47,6 +49,7 @@ const adminSettingsKeys = [
 router.put("/", requireRole(UserRole.ADMIN, UserRole.CASHIER), async (req, res, next) => {
   try {
     const body = putSchema.parse(req.body);
+    const rid = req.user!.restaurantId!;
     const keys =
       req.user!.role === UserRole.CASHIER ? cashierSettingsKeys : adminSettingsKeys;
     const data: Record<string, unknown> = {};
@@ -64,11 +67,18 @@ router.put("/", requireRole(UserRole.ADMIN, UserRole.CASHIER), async (req, res, 
       throw new AppError(400, "No allowed fields to update");
     }
     const s = await prisma.restaurantSettings.upsert({
-      where: { id: "default" },
-      create: { id: "default", ...(data as object) },
+      where: { restaurantId: rid },
+      create: { restaurantId: rid, ...(data as object) },
       update: data as object,
     });
-    await writeAudit(req.user!.id, "SETTINGS_UPDATE", "RestaurantSettings", s.id, body as Record<string, unknown>);
+    await writeAudit(
+      req.user!.id,
+      "SETTINGS_UPDATE",
+      "RestaurantSettings",
+      s.restaurantId,
+      body as Record<string, unknown>,
+      rid
+    );
     res.json(s);
   } catch (e) {
     next(e);

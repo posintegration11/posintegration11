@@ -10,7 +10,7 @@ import { reconnectSocket } from "@/lib/socket";
 import type { RestaurantSettings } from "@/lib/types";
 
 const links: { href: string; label: string; shortLabel: string; roles: string[] }[] = [
-  { href: "/", label: "Dashboard", shortLabel: "Home", roles: ["ADMIN", "CASHIER"] },
+  { href: "/dashboard", label: "Dashboard", shortLabel: "Home", roles: ["ADMIN", "CASHIER"] },
   { href: "/walk-in", label: "Walk-in", shortLabel: "Walk-in", roles: ["ADMIN", "CASHIER", "WAITER"] },
   { href: "/tables", label: "Tables", shortLabel: "Tables", roles: ["ADMIN", "CASHIER", "WAITER"] },
   { href: "/kitchen", label: "Kitchen", shortLabel: "Kitchen", roles: ["ADMIN", "KITCHEN"] },
@@ -25,7 +25,7 @@ const MOBILE_TAB_COUNT = 4;
 function NavGlyph({ href }: { href: string }) {
   const common = "size-5 shrink-0";
   switch (href) {
-    case "/":
+    case "/dashboard":
       return (
         <svg className={common} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
@@ -99,8 +99,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       return;
     }
     setUser(getUser());
-    void api<{ id: string; name: string; email: string; role: string }>("/auth/me")
+    void api<{ id: string; name: string; email: string; role: string; restaurantId?: string | null }>("/auth/me")
       .then(async (me) => {
+        if (me.role === "SUPER_ADMIN") {
+          router.replace("/platform");
+          return;
+        }
         setUser(me);
         try {
           const s = await api<RestaurantSettings>("/settings");

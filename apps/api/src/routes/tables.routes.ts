@@ -2,24 +2,28 @@ import { Router } from "express";
 import { OrderStatus, RestaurantTableStatus, UserRole } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../prisma.js";
-import { authJwt, requireRole } from "../middleware/auth.js";
+import { authJwt, requireRole, requireTenantUser } from "../middleware/auth.js";
 import { AppError } from "../middleware/errorHandler.js";
-import { emitAll } from "../realtime.js";
+import { emitToTenant } from "../realtime.js";
 import { writeAudit } from "../utils/audit.js";
 import { makeOrderNumber } from "../utils/refs.js";
 
 const router = Router();
 
 router.use(authJwt);
+router.use(requireTenantUser);
 
-router.get("/", async (_req, res, next) => {
+router.get("/", async (req, res, next) => {
   try {
+    const rid = req.user!.restaurantId!;
     const tables = await prisma.restaurantTable.findMany({
+      where: { restaurantId: rid },
       orderBy: { tableNumber: "asc" },
     });
 
     const orders = await prisma.order.findMany({
       where: {
+        restaurantId: rid,
         status: {
           in: [
             OrderStatus.OPEN,
@@ -33,7 +37,6 @@ router.get("/", async (_req, res, next) => {
       orderBy: { openedAt: "desc" },
     });
 
-    /** Newest non-terminal order per table (matches GET /tables/:id/active-order). */
     const byTable = new Map<string, (typeof orders)[0]>();
     for (const o of orders) {
       if (!byTable.has(o.tableId)) {
@@ -63,12 +66,12 @@ router.get("/", async (_req, res, next) => {
   }
 });
 
-/** Small payload for order screen to detect walk-in without listing all tables. */
 router.get("/:tableId/summary", async (req, res, next) => {
   try {
     const { tableId } = req.params;
-    const table = await prisma.restaurantTable.findUnique({
-      where: { id: tableId },
+    const rid = req.user!.restaurantId!;
+    const table = await prisma.restaurantTable.findFirst({
+      where: { id: tableId, restaurantId: rid },
       select: {
         id: true,
         tableNumber: true,
@@ -89,18 +92,20 @@ router.get("/:tableId/summary", async (req, res, next) => {
 const tableOrderRoles = [UserRole.ADMIN, UserRole.CASHIER, UserRole.WAITER] as const;
 
 const postOrderBodySchema = z.object({
-  /** Walk-in only: create a new ticket even after the previous one is fully closed (never while another is still open). */
   forceNew: z.boolean().optional(),
 });
 
 const nonTerminalStatuses = {
-  notIn: [OrderStatus.PAID, OrderStatus.CLOSED, OrderStatus.CANCELLED] as const,
+  notIn: [OrderStatus.PAID, OrderStatus.CLOSED, OrderStatus.CANCELLED],
 };
 
 router.post("/:tableId/orders", requireRole(...tableOrderRoles), async (req, res, next) => {
   try {
     const { tableId } = req.params;
-    const table = await prisma.restaurantTable.findUnique({ where: { id: tableId } });
+    const rid = req.user!.restaurantId!;
+    const table = await prisma.restaurantTable.findFirst({
+      where: { id: tableId, restaurantId: rid },
+    });
     if (!table) {
       throw new AppError(404, "Table not found");
     }
@@ -112,7 +117,7 @@ router.post("/:tableId/orders", requireRole(...tableOrderRoles), async (req, res
 
     if (forceNew) {
       const blocking = await prisma.order.findFirst({
-        where: { tableId, status: nonTerminalStatuses },
+        where: { tableId, restaurantId: rid, status: nonTerminalStatuses },
       });
       if (blocking) {
         throw new AppError(
@@ -126,13 +131,14 @@ router.post("/:tableId/orders", requireRole(...tableOrderRoles), async (req, res
       const active = await prisma.order.findFirst({
         where: {
           tableId,
+          restaurantId: rid,
           status: nonTerminalStatuses,
         },
         orderBy: { openedAt: "desc" },
       });
       if (active) {
-        const full = await prisma.order.findUnique({
-          where: { id: active.id },
+        const full = await prisma.order.findFirst({
+          where: { id: active.id, restaurantId: rid },
           include: {
             table: true,
             items: { orderBy: { id: "asc" } },
@@ -146,6 +152,7 @@ router.post("/:tableId/orders", requireRole(...tableOrderRoles), async (req, res
     const createdId = await prisma.$transaction(async (tx) => {
       const o = await tx.order.create({
         data: {
+          restaurantId: rid,
           orderNumber: makeOrderNumber(),
           tableId,
           createdById: req.user!.id,
@@ -161,8 +168,8 @@ router.post("/:tableId/orders", requireRole(...tableOrderRoles), async (req, res
       return o.id;
     });
 
-    const order = await prisma.order.findUnique({
-      where: { id: createdId },
+    const order = await prisma.order.findFirst({
+      where: { id: createdId, restaurantId: rid },
       include: {
         table: true,
         items: { orderBy: { id: "asc" } },
@@ -170,9 +177,9 @@ router.post("/:tableId/orders", requireRole(...tableOrderRoles), async (req, res
       },
     });
 
-    await writeAudit(req.user!.id, "ORDER_OPEN", "Order", createdId, { tableId });
-    emitAll("table:updated");
-    emitAll("order:updated", { orderId: createdId });
+    await writeAudit(req.user!.id, "ORDER_OPEN", "Order", createdId, { tableId }, rid);
+    emitToTenant(rid, "table:updated");
+    emitToTenant(rid, "order:updated", { orderId: createdId });
     res.status(201).json(order);
   } catch (e) {
     next(e);
@@ -182,9 +189,11 @@ router.post("/:tableId/orders", requireRole(...tableOrderRoles), async (req, res
 router.get("/:tableId/active-order", requireRole(...tableOrderRoles), async (req, res, next) => {
   try {
     const { tableId } = req.params;
+    const rid = req.user!.restaurantId!;
     const order = await prisma.order.findFirst({
       where: {
         tableId,
+        restaurantId: rid,
         status: nonTerminalStatuses,
       },
       orderBy: { openedAt: "desc" },
@@ -200,20 +209,22 @@ router.get("/:tableId/active-order", requireRole(...tableOrderRoles), async (req
   }
 });
 
-/** Last tickets for a walk-in counter only — for POS walk-in hub (pending vs paid). */
 router.get("/:tableId/recent-tickets", requireRole(...tableOrderRoles), async (req, res, next) => {
   try {
     const { tableId } = req.params;
-    const table = await prisma.restaurantTable.findUnique({ where: { id: tableId } });
+    const rid = req.user!.restaurantId!;
+    const table = await prisma.restaurantTable.findFirst({
+      where: { id: tableId, restaurantId: rid },
+    });
     if (!table) {
       throw new AppError(404, "Table not found");
     }
     if (!table.isWalkIn) {
-      throw new AppError(400, "Recent tickets are only available for walk-in counters");
+      throw new AppError(400, "Recent tickets walk-in counters only");
     }
 
     const orders = await prisma.order.findMany({
-      where: { tableId },
+      where: { tableId, restaurantId: rid },
       orderBy: { openedAt: "desc" },
       take: 40,
       select: {
@@ -263,18 +274,23 @@ router.patch(
   async (req, res, next) => {
     try {
       const id = req.params.id;
+      const rid = req.user!.restaurantId!;
       const body = patchSchema.parse(req.body);
+      const existing = await prisma.restaurantTable.findFirst({ where: { id, restaurantId: rid } });
+      if (!existing) {
+        throw new AppError(404, "Table not found");
+      }
       const t = await prisma.restaurantTable.update({
         where: { id },
         data: body,
       });
-      await writeAudit(req.user!.id, "TABLE_UPDATE", "RestaurantTable", id, body as Record<string, unknown>);
-      emitAll("table:updated");
+      await writeAudit(req.user!.id, "TABLE_UPDATE", "RestaurantTable", id, body as Record<string, unknown>, rid);
+      emitToTenant(rid, "table:updated");
       res.json(t);
     } catch (e) {
       next(e);
     }
-  }
+  },
 );
 
 export const tablesRouter = router;

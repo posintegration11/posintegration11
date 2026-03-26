@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { api } from "@/lib/api";
@@ -17,12 +18,16 @@ export default function LoginPage() {
     setError(null);
     setLoading(true);
     try {
-      const res = await api<{ token: string; user: { id: string; name: string; email: string; role: string } }>(
-        "/auth/login",
-        { method: "POST", body: JSON.stringify({ email, password }) }
-      );
+      const res = await api<{
+        token: string;
+        user: { id: string; name: string; email: string; role: string; restaurantId: string | null };
+      }>("/auth/login", { method: "POST", body: JSON.stringify({ email, password }) });
       setSession(res.token, res.user);
-      router.replace("/");
+      if (res.user.role === "SUPER_ADMIN") {
+        router.replace("/platform");
+      } else {
+        router.replace("/dashboard");
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
     } finally {
@@ -38,7 +43,10 @@ export default function LoginPage() {
       >
         <h1 className="text-2xl font-semibold">Sign in</h1>
         <p className="text-sm text-[var(--muted)]">
-          Sign in with your staff account. (Local dev: seeded admin is often admin@pos.local — check your seed or admin user list.)
+          Staff and restaurant admins sign in here. New restaurant?{" "}
+          <Link href="/signup" className="font-medium text-[var(--accent)] underline-offset-2 hover:underline">
+            Create account
+          </Link>
         </p>
         {error && <p className="text-sm text-red-400">{error}</p>}
         <label className="block text-sm">
@@ -67,6 +75,11 @@ export default function LoginPage() {
         >
           {loading ? "Signing in…" : "Sign in"}
         </button>
+        <p className="text-center text-sm text-[var(--muted)]">
+          <Link href="/" className="underline-offset-2 hover:underline">
+            ← Back to home
+          </Link>
+        </p>
       </form>
     </div>
   );

@@ -6,6 +6,7 @@ export type AuthUser = {
   name: string;
   email: string;
   role: string;
+  restaurantId?: string | null;
 };
 
 export function getToken(): string | null {
@@ -35,6 +36,7 @@ export function getUser(): AuthUser | null {
 }
 
 export function canAccess(path: string, role: string): boolean {
+  if (path.startsWith("/platform")) return role === "SUPER_ADMIN";
   if (path.startsWith("/admin")) return role === "ADMIN";
   if (path.startsWith("/kitchen")) return role === "KITCHEN" || role === "ADMIN";
   if (path.startsWith("/billing")) return role === "CASHIER" || role === "ADMIN";
