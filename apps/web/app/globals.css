@@ -18,6 +18,13 @@ body {
   font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
+  -webkit-tap-highlight-color: color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+@media (max-width: 767px) {
+  html {
+    overflow-x: hidden;
+  }
 }
 
 /* iOS safe areas (notch / home indicator) */

@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/lib/api";
+import { LoadingButton } from "@/components/LoadingButton";
+import { Spinner } from "@/components/Spinner";
 import { getSocket } from "@/lib/socket";
 import type { KotRow } from "@/lib/types";
 
@@ -56,6 +58,7 @@ export default function KitchenPage() {
   const [error, setError] = useState<string | null>(null);
   const [busyLine, setBusyLine] = useState<string | null>(null);
   const [busyKot, setBusyKot] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
   const [, setAgeTick] = useState(0);
   const loadTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -167,16 +170,17 @@ export default function KitchenPage() {
           <p className="text-sm text-[var(--muted)]">Live KOT board — updates automatically.</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <button
+          <LoadingButton
             type="button"
+            loading={refreshing}
             onClick={() => {
-              setLoading(true);
-              load();
+              setRefreshing(true);
+              void load().finally(() => setRefreshing(false));
             }}
             className="rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-2.5 text-sm font-medium transition duration-75 hover:border-[var(--accent)] active:scale-[0.98]"
           >
             Refresh
-          </button>
+          </LoadingButton>
         </div>
       </header>
 
@@ -261,9 +265,9 @@ export default function KitchenPage() {
                                         type="button"
                                         disabled={disabledLine}
                                         onClick={() => void setLine(li.id, "PREPARING")}
-                                        className="min-h-10 flex-1 touch-manipulation rounded-lg bg-amber-600 px-3 text-sm font-semibold text-white shadow transition duration-75 hover:brightness-110 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
+                                        className="inline-flex min-h-10 flex-1 touch-manipulation items-center justify-center rounded-lg bg-amber-600 px-3 text-sm font-semibold text-white shadow transition duration-75 hover:brightness-110 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
                                       >
-                                        {lineBusy ? "…" : "Preparing"}
+                                        {lineBusy ? <Spinner className="size-4 text-white" /> : "Preparing"}
                                       </button>
                                     )}
                                     {li.status === "PREPARING" && (
@@ -271,9 +275,9 @@ export default function KitchenPage() {
                                         type="button"
                                         disabled={disabledLine}
                                         onClick={() => void setLine(li.id, "READY")}
-                                        className="min-h-10 flex-1 touch-manipulation rounded-lg bg-emerald-600 px-3 text-sm font-semibold text-white shadow transition duration-75 hover:brightness-110 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
+                                        className="inline-flex min-h-10 flex-1 touch-manipulation items-center justify-center rounded-lg bg-emerald-600 px-3 text-sm font-semibold text-white shadow transition duration-75 hover:brightness-110 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
                                       >
-                                        {lineBusy ? "…" : "Ready"}
+                                        {lineBusy ? <Spinner className="size-4 text-white" /> : "Ready"}
                                       </button>
                                     )}
                                     {li.status === "READY" && (
@@ -281,9 +285,9 @@ export default function KitchenPage() {
                                         type="button"
                                         disabled={disabledLine}
                                         onClick={() => void setLine(li.id, "SERVED")}
-                                        className="min-h-10 flex-1 touch-manipulation rounded-lg bg-sky-600 px-3 text-sm font-semibold text-white shadow transition duration-75 hover:brightness-110 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
+                                        className="inline-flex min-h-10 flex-1 touch-manipulation items-center justify-center rounded-lg bg-sky-600 px-3 text-sm font-semibold text-white shadow transition duration-75 hover:brightness-110 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
                                       >
-                                        {lineBusy ? "…" : "Served"}
+                                        {lineBusy ? <Spinner className="size-4 text-white" /> : "Served"}
                                       </button>
                                     )}
                                   </div>
@@ -297,9 +301,9 @@ export default function KitchenPage() {
                                 type="button"
                                 disabled={kotBusy || busyLine !== null}
                                 onClick={() => void setKot(k.id, "PREPARING")}
-                                className="w-full touch-manipulation rounded-lg border border-amber-500/40 bg-amber-900/30 py-2.5 text-sm font-semibold text-amber-100 transition duration-75 hover:bg-amber-900/45 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50"
+                                className="inline-flex w-full touch-manipulation items-center justify-center rounded-lg border border-amber-500/40 bg-amber-900/30 py-2.5 text-sm font-semibold text-amber-100 transition duration-75 hover:bg-amber-900/45 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50"
                               >
-                                {kotBusy ? "Updating…" : "Start ticket (preparing)"}
+                                {kotBusy ? <Spinner className="size-4 text-amber-100" /> : "Start ticket (preparing)"}
                               </button>
                             )}
                             {k.status === "PREPARING" && (
@@ -307,9 +311,9 @@ export default function KitchenPage() {
                                 type="button"
                                 disabled={kotBusy || busyLine !== null}
                                 onClick={() => void setKot(k.id, "READY")}
-                                className="w-full touch-manipulation rounded-lg border border-emerald-500/40 bg-emerald-900/25 py-2.5 text-sm font-semibold text-emerald-100 transition duration-75 hover:bg-emerald-900/40 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50"
+                                className="inline-flex w-full touch-manipulation items-center justify-center rounded-lg border border-emerald-500/40 bg-emerald-900/25 py-2.5 text-sm font-semibold text-emerald-100 transition duration-75 hover:bg-emerald-900/40 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50"
                               >
-                                {kotBusy ? "Updating…" : "All ready (ticket)"}
+                                {kotBusy ? <Spinner className="size-4 text-emerald-100" /> : "All ready (ticket)"}
                               </button>
                             )}
                             {k.status === "READY" && (
@@ -317,9 +321,9 @@ export default function KitchenPage() {
                                 type="button"
                                 disabled={kotBusy || busyLine !== null}
                                 onClick={() => void setKot(k.id, "COMPLETED")}
-                                className="w-full touch-manipulation rounded-lg border border-[var(--border)] bg-[var(--surface)] py-2.5 text-sm font-semibold transition duration-75 hover:bg-[var(--border)]/30 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50"
+                                className="inline-flex w-full touch-manipulation items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--surface)] py-2.5 text-sm font-semibold transition duration-75 hover:bg-[var(--border)]/30 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50"
                               >
-                                {kotBusy ? "Updating…" : "Complete ticket"}
+                                {kotBusy ? <Spinner className="size-4" /> : "Complete ticket"}
                               </button>
                             )}
                           </div>

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/api";
+import { LoadingButton } from "@/components/LoadingButton";
 import type { OrderDetail, OrderInvoice, RestaurantSettings } from "@/lib/types";
 
 function formatInvoiceDateTime(iso: string | undefined) {
@@ -27,6 +28,9 @@ export function BillingClient({ orderId }: { orderId: string }) {
   const [mode2, setMode2] = useState<"CASH" | "CARD" | "UPI">("UPI");
   const [splitAmount, setSplitAmount] = useState(0);
   const [msg, setMsg] = useState<string | null>(null);
+  const [recalcBusy, setRecalcBusy] = useState(false);
+  const [invoiceBusy, setInvoiceBusy] = useState(false);
+  const [payBusy, setPayBusy] = useState(false);
 
   const refresh = useCallback(async () => {
     const [o, s] = await Promise.all([
@@ -47,6 +51,7 @@ export function BillingClient({ orderId }: { orderId: string }) {
 
   async function recalc() {
     setMsg(null);
+    setRecalcBusy(true);
     try {
       const patch = await api<Pick<OrderDetail, "subtotal" | "taxTotal" | "discountTotal" | "grandTotal">>(
         `/billing/orders/${orderId}/recalculate`,
@@ -60,23 +65,29 @@ export function BillingClient({ orderId }: { orderId: string }) {
       void refresh();
     } catch (e) {
       setMsg(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setRecalcBusy(false);
     }
   }
 
   async function createInvoice() {
     setMsg(null);
+    setInvoiceBusy(true);
     try {
       const inv = await api<OrderInvoice>(`/billing/orders/${orderId}/invoice`, { method: "POST" });
       setInvoice(inv);
       void refresh();
     } catch (e) {
       setMsg(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setInvoiceBusy(false);
     }
   }
 
   async function pay() {
     if (!invoice || !order) return;
     setMsg(null);
+    setPayBusy(true);
     const grand = Number(invoice.grandTotal);
     try {
       type PaidPayload = OrderInvoice & { order: OrderDetail };
@@ -120,6 +131,8 @@ export function BillingClient({ orderId }: { orderId: string }) {
       void refresh();
     } catch (e) {
       setMsg(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setPayBusy(false);
     }
   }
 
@@ -254,21 +267,23 @@ export function BillingClient({ orderId }: { orderId: string }) {
               />
             </label>
             <div className="flex flex-wrap gap-2">
-              <button
+              <LoadingButton
                 type="button"
-                onClick={recalc}
+                loading={recalcBusy}
+                onClick={() => void recalc()}
                 className="touch-manipulation flex-1 rounded-lg bg-[var(--border)] px-3 py-1.5 text-xs font-medium transition duration-75 active:scale-[0.98] sm:flex-none"
               >
                 Recalculate
-              </button>
-              <button
+              </LoadingButton>
+              <LoadingButton
                 type="button"
-                onClick={createInvoice}
+                loading={invoiceBusy}
                 disabled={!!invoice && !paid}
+                onClick={() => void createInvoice()}
                 className="touch-manipulation flex-1 rounded-lg bg-[var(--accent)] px-3 py-1.5 text-xs font-semibold text-white transition duration-75 active:scale-[0.98] disabled:opacity-40 sm:flex-none"
               >
                 Invoice
-              </button>
+              </LoadingButton>
             </div>
             {invoice && !paid && (
               <div className="space-y-2 border-t border-[var(--border)] pt-2.5">
@@ -316,13 +331,14 @@ export function BillingClient({ orderId }: { orderId: string }) {
                     </select>
                   </div>
                 )}
-                <button
+                <LoadingButton
                   type="button"
-                  onClick={pay}
+                  loading={payBusy}
+                  onClick={() => void pay()}
                   className="w-full touch-manipulation rounded-lg bg-emerald-600 py-2 text-sm font-semibold text-white transition duration-75 hover:brightness-110 active:scale-[0.98]"
                 >
                   Record payment
-                </button>
+                </LoadingButton>
               </div>
             )}
           </div>

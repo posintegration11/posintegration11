@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { LoadingButton } from "@/components/LoadingButton";
 
 type BeforeInstallPromptEventLike = Event & {
   prompt: () => Promise<void>;
@@ -29,6 +30,7 @@ export function PwaInstallHint() {
   const [deferred, setDeferred] = useState<BeforeInstallPromptEventLike | null>(null);
   const [showIosTip, setShowIosTip] = useState(false);
   const [dismissed, setDismissed] = useState(false);
+  const [installBusy, setInstallBusy] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -66,9 +68,11 @@ export function PwaInstallHint() {
 
   const onInstallClick = async () => {
     if (!deferred) return;
+    setInstallBusy(true);
     try {
       await deferred.prompt();
     } finally {
+      setInstallBusy(false);
       dismiss();
     }
   };
@@ -88,13 +92,14 @@ export function PwaInstallHint() {
             this device — no Play Store needed.
           </p>
           <div className="flex shrink-0 gap-2">
-            <button
+            <LoadingButton
               type="button"
+              loading={installBusy}
               className="rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white"
               onClick={() => void onInstallClick()}
             >
               Install
-            </button>
+            </LoadingButton>
             <button
               type="button"
               className="rounded-lg border border-[var(--border)] px-3 py-2 text-sm text-[var(--muted)]"

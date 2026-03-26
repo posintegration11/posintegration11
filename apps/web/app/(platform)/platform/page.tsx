@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/api";
+import { LoadingButton } from "@/components/LoadingButton";
 import { clearSession, getToken, getUser, setSession, type AuthUser } from "@/lib/auth";
 
 type Row = {
@@ -22,9 +23,10 @@ export default function PlatformAdminPage() {
   const [rows, setRows] = useState<Row[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(() => {
-    void api<{ restaurants: Row[] }>("/platform/restaurants")
+    return api<{ restaurants: Row[] }>("/platform/restaurants")
       .then((r) => {
         setRows(r.restaurants);
         setError(null);
@@ -103,13 +105,17 @@ export default function PlatformAdminPage() {
           <p className="text-sm text-[var(--muted)]">Restaurants on this deployment ({rows?.length ?? "…"})</p>
         </div>
         <div className="flex gap-2">
-          <button
+          <LoadingButton
             type="button"
-            onClick={() => load()}
-            className="rounded-lg border border-[var(--border)] px-4 py-2 text-sm font-medium hover:border-[var(--accent)]"
+            loading={refreshing}
+            onClick={() => {
+              setRefreshing(true);
+              void load().finally(() => setRefreshing(false));
+            }}
+            className="rounded-lg border border-[var(--border)] bg-[var(--surface)] px-4 py-2 text-sm font-medium hover:border-[var(--accent)]"
           >
             Refresh
-          </button>
+          </LoadingButton>
           <button
             type="button"
             onClick={() => {
@@ -156,35 +162,41 @@ export default function PlatformAdminPage() {
                   <td className="px-4 py-3">
                     <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
                       {r.status === "PENDING_VERIFICATION" ? (
-                        <button
+                        <LoadingButton
                           type="button"
-                          disabled={busyId === r.id}
+                          loading={busyId === r.id}
+                          spinnerOnly={false}
+                          disabled={busyId !== null && busyId !== r.id}
                           onClick={() => void setStatus(r.id, "ACTIVE")}
-                          className="text-left text-xs font-semibold text-emerald-400 hover:underline disabled:opacity-50"
+                          className="inline-flex text-left text-xs font-semibold text-emerald-400 hover:underline disabled:opacity-50"
                           title="Activates restaurant + pending owner account (same as email verify)"
                         >
                           Approve / verify
-                        </button>
+                        </LoadingButton>
                       ) : null}
                       {r.status === "SUSPENDED" ? (
-                        <button
+                        <LoadingButton
                           type="button"
-                          disabled={busyId === r.id}
+                          loading={busyId === r.id}
+                          spinnerOnly={false}
+                          disabled={busyId !== null && busyId !== r.id}
                           onClick={() => void setStatus(r.id, "ACTIVE")}
-                          className="text-left text-xs font-semibold text-emerald-400 hover:underline disabled:opacity-50"
+                          className="inline-flex text-left text-xs font-semibold text-emerald-400 hover:underline disabled:opacity-50"
                         >
                           Activate
-                        </button>
+                        </LoadingButton>
                       ) : null}
                       {r.status === "ACTIVE" ? (
-                        <button
+                        <LoadingButton
                           type="button"
-                          disabled={busyId === r.id}
+                          loading={busyId === r.id}
+                          spinnerOnly={false}
+                          disabled={busyId !== null && busyId !== r.id}
                           onClick={() => void setStatus(r.id, "SUSPENDED")}
-                          className="text-left text-xs font-semibold text-amber-300 hover:underline disabled:opacity-50"
+                          className="inline-flex text-left text-xs font-semibold text-amber-300 hover:underline disabled:opacity-50"
                         >
                           Suspend
-                        </button>
+                        </LoadingButton>
                       ) : null}
                     </div>
                   </td>

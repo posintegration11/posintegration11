@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "@/lib/api";
+import { LoadingButton } from "@/components/LoadingButton";
 import { getUser } from "@/lib/auth";
 import { getSocket } from "@/lib/socket";
 import type { OrderDetail, TableRow, WalkInTicketRow } from "@/lib/types";
@@ -96,18 +97,23 @@ export function WalkInCounterClient() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [openBusyId, setOpenBusyId] = useState<string | null>(null);
+  const [refreshBusy, setRefreshBusy] = useState(false);
   const [ticketsByTable, setTicketsByTable] = useState<Record<string, WalkInTicketRow[]>>({});
   const [, setNowTick] = useState(0);
 
-  const load = useCallback(() => {
-    void api<TableRow[]>("/tables")
+  const fetchTables = useCallback(() => {
+    return api<TableRow[]>("/tables")
       .then((r) => {
         setTables(r);
         setError(null);
       })
-      .catch(() => setError("Could not load counter"))
-      .finally(() => setLoading(false));
+      .catch(() => setError("Could not load counter"));
   }, []);
+
+  const load = useCallback(() => {
+    setLoading(true);
+    void fetchTables().finally(() => setLoading(false));
+  }, [fetchTables]);
 
   useEffect(() => {
     setLoading(true);
@@ -118,12 +124,12 @@ export function WalkInCounterClient() {
     const s = getSocket();
     s.auth = { token: typeof window !== "undefined" ? localStorage.getItem("pos_token") : null };
     s.connect();
-    const onUpd = () => load();
+    const onUpd = () => void fetchTables();
     s.on("table:updated", onUpd);
     return () => {
       s.off("table:updated", onUpd);
     };
-  }, [load]);
+  }, [fetchTables]);
 
   useEffect(() => {
     const id = window.setInterval(() => setNowTick((tick) => tick + 1), 30_000);
@@ -189,16 +195,17 @@ export function WalkInCounterClient() {
             Open tickets appear below with actions. Start a new order only after the current one is billed or closed.
           </p>
         </div>
-        <button
+        <LoadingButton
           type="button"
+          loading={refreshBusy}
           onClick={() => {
-            setLoading(true);
-            load();
+            setRefreshBusy(true);
+            void fetchTables().finally(() => setRefreshBusy(false));
           }}
           className="self-start rounded-lg border border-[var(--border)] bg-[var(--surface)] px-4 py-2 text-sm font-medium transition hover:border-[var(--accent)] active:scale-[0.98]"
         >
           Refresh
-        </button>
+        </LoadingButton>
       </header>
 
       {error && (
@@ -251,24 +258,18 @@ export function WalkInCounterClient() {
                   )}
                 </div>
                 <div className="flex shrink-0 flex-col gap-2 sm:items-end">
-                  <button
+                  <LoadingButton
                     type="button"
-                    disabled={busy || loading || hasActive}
+                    loading={busy}
+                    disabled={loading || hasActive}
                     title={
                       hasActive ? "Bill or close the current ticket first (see cards below)" : "Start a new walk-in order"
                     }
                     onClick={() => void openCounter(t)}
                     className="inline-flex touch-manipulation items-center justify-center rounded-xl bg-violet-500 px-6 py-3.5 text-center text-sm font-semibold text-white shadow-md shadow-violet-900/40 transition hover:brightness-110 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:brightness-100"
                   >
-                    {busy ? (
-                      <span className="inline-flex items-center gap-2">
-                        <span className="size-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-                        Opening…
-                      </span>
-                    ) : (
-                      "Start walk-in order"
-                    )}
-                  </button>
+                    Start walk-in order
+                  </LoadingButton>
                 </div>
               </div>
             </div>

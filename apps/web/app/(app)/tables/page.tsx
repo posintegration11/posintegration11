@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "@/lib/api";
+import { LoadingButton } from "@/components/LoadingButton";
 import { getUser } from "@/lib/auth";
 import { getSocket } from "@/lib/socket";
 import type { TableRow } from "@/lib/types";
@@ -44,17 +45,22 @@ export default function TablesPage() {
   const [tables, setTables] = useState<TableRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [refreshBusy, setRefreshBusy] = useState(false);
   const [, setNowTick] = useState(0);
 
-  const load = useCallback(() => {
-    void api<TableRow[]>("/tables")
+  const fetchTables = useCallback(() => {
+    return api<TableRow[]>("/tables")
       .then((rows) => {
         setTables(rows);
         setLoadError(null);
       })
-      .catch(() => setLoadError("Could not refresh tables"))
-      .finally(() => setLoading(false));
+      .catch(() => setLoadError("Could not refresh tables"));
   }, []);
+
+  const load = useCallback(() => {
+    setLoading(true);
+    void fetchTables().finally(() => setLoading(false));
+  }, [fetchTables]);
 
   useEffect(() => {
     setLoading(true);
@@ -65,12 +71,12 @@ export default function TablesPage() {
     const s = getSocket();
     s.auth = { token: typeof window !== "undefined" ? localStorage.getItem("pos_token") : null };
     s.connect();
-    const onUpd = () => load();
+    const onUpd = () => void fetchTables();
     s.on("table:updated", onUpd);
     return () => {
       s.off("table:updated", onUpd);
     };
-  }, [load]);
+  }, [fetchTables]);
 
   useEffect(() => {
     const id = window.setInterval(() => setNowTick((t) => t + 1), 30_000);
@@ -98,16 +104,17 @@ export default function TablesPage() {
             ) : null}
           </p>
         </div>
-        <button
+        <LoadingButton
           type="button"
+          loading={refreshBusy}
           onClick={() => {
-            setLoading(true);
-            load();
+            setRefreshBusy(true);
+            void fetchTables().finally(() => setRefreshBusy(false));
           }}
           className="self-start rounded-lg border border-[var(--border)] bg-[var(--surface)] px-4 py-2 text-sm font-medium text-[var(--text)] transition hover:border-[var(--accent)] hover:bg-[var(--surface)]/80 active:scale-[0.98]"
         >
           Refresh
-        </button>
+        </LoadingButton>
       </header>
 
       {loadError && (

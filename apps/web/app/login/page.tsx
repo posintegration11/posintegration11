@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { api } from "@/lib/api";
 import { POS_SHOW_ENTRY_NOTICE_KEY } from "@/components/AppEntryNotice";
+import { LoadingButton } from "@/components/LoadingButton";
 import { setSession } from "@/lib/auth";
 
 export default function LoginPage() {
@@ -32,7 +33,7 @@ export default function LoginPage() {
         } catch {
           /* ignore */
         }
-        router.replace("/dashboard");
+        router.replace("/dashboard?signedIn=1");
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
@@ -74,13 +75,13 @@ export default function LoginPage() {
             autoComplete="current-password"
           />
         </label>
-        <button
+        <LoadingButton
           type="submit"
-          disabled={loading}
+          loading={loading}
           className="w-full touch-manipulation rounded-xl bg-[var(--accent)] py-4 text-lg font-semibold text-white transition duration-75 hover:brightness-110 active:scale-[0.98] disabled:opacity-50 disabled:hover:brightness-100 disabled:active:scale-100"
         >
-          {loading ? "Signing in…" : "Sign in"}
-        </button>
+          Sign in
+        </LoadingButton>
         <p className="text-center text-sm text-[var(--muted)]">
           <Link href="/" className="underline-offset-2 hover:underline">
             ← Back to home

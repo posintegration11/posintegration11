@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/lib/api";
+import { LoadingButton } from "@/components/LoadingButton";
+import { Spinner } from "@/components/Spinner";
 import { getUser } from "@/lib/auth";
 import { getSocket } from "@/lib/socket";
 import type { MenuItem, OrderDetail, OrderItem, TableSummary } from "@/lib/types";
@@ -43,6 +45,10 @@ export function TableOrderClient({ tableId }: { tableId: string }) {
   const [loading, setLoading] = useState(true);
   const [walkInWithoutOrder, setWalkInWithoutOrder] = useState(false);
   const [startWalkInBusy, setStartWalkInBusy] = useState(false);
+  const [kitchenBusy, setKitchenBusy] = useState(false);
+  const [billBusy, setBillBusy] = useState(false);
+  const [addingItemId, setAddingItemId] = useState<string | null>(null);
+  const [lineMutatingId, setLineMutatingId] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [tableSummary, setTableSummary] = useState<TableSummary | null>(null);
 
@@ -177,6 +183,7 @@ export function TableOrderClient({ tableId }: { tableId: string }) {
     const mi = items.find((m) => m.id === menuItemId);
     if (!mi) return;
     setMsg(null);
+    setAddingItemId(menuItemId);
 
     setOrder((prev) => {
       if (!prev || prev.id !== oid) return prev;
@@ -245,6 +252,8 @@ export function TableOrderClient({ tableId }: { tableId: string }) {
     } catch (e) {
       setMsg(e instanceof Error ? e.message : "Failed");
       void syncOrderFromServer(oid).catch(() => {});
+    } finally {
+      setAddingItemId(null);
     }
   }
 
@@ -254,6 +263,7 @@ export function TableOrderClient({ tableId }: { tableId: string }) {
     const snapshot = order;
     const nowIso = new Date().toISOString();
     setMsg(null);
+    setKitchenBusy(true);
     setOrder((prev) => {
       if (!prev || prev.id !== oid) return prev;
       return {
@@ -269,6 +279,8 @@ export function TableOrderClient({ tableId }: { tableId: string }) {
     } catch (e) {
       setOrder(snapshot);
       setMsg(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setKitchenBusy(false);
     }
   }
 
@@ -277,6 +289,7 @@ export function TableOrderClient({ tableId }: { tableId: string }) {
     const oid = order.id;
     const snapshot = order;
     setMsg(null);
+    setBillBusy(true);
     setOrder((prev) => (prev && prev.id === oid ? { ...prev, status: "READY_FOR_BILLING" } : prev));
     try {
       await api(`/orders/${oid}/ready-for-billing`, { method: "POST" });
@@ -284,6 +297,8 @@ export function TableOrderClient({ tableId }: { tableId: string }) {
     } catch (e) {
       setOrder(snapshot);
       setMsg(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setBillBusy(false);
     }
   }
 
@@ -294,6 +309,7 @@ export function TableOrderClient({ tableId }: { tableId: string }) {
     const line = order.items.find((i) => i.id === itemId);
     if (!line) return;
     const snapshot = order;
+    setLineMutatingId(itemId);
     const lineTotal = (Number(line.itemPriceSnapshot) * quantity).toFixed(2);
     setOrder((prev) => {
       if (!prev || prev.id !== oid) return prev;
@@ -314,6 +330,8 @@ export function TableOrderClient({ tableId }: { tableId: string }) {
     } catch (e) {
       setOrder(snapshot);
       setMsg(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setLineMutatingId(null);
     }
   }
 
@@ -328,6 +346,7 @@ export function TableOrderClient({ tableId }: { tableId: string }) {
       });
       return;
     }
+    setLineMutatingId(itemId);
     const snapshot = order;
     setOrder((prev) => {
       if (!prev || prev.id !== oid) return prev;
@@ -347,6 +366,8 @@ export function TableOrderClient({ tableId }: { tableId: string }) {
     } catch (e) {
       setOrder(snapshot);
       setMsg(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setLineMutatingId(null);
     }
   }
 
@@ -395,21 +416,14 @@ export function TableOrderClient({ tableId }: { tableId: string }) {
             page to continue the ₹ total you see there, or start the first order for this counter below.
           </p>
           {msg && <p className="mt-4 rounded-lg border border-red-500/30 bg-red-950/40 px-3 py-2 text-sm text-red-300">{msg}</p>}
-          <button
+          <LoadingButton
             type="button"
-            disabled={startWalkInBusy}
+            loading={startWalkInBusy}
             onClick={() => void startWalkInOrder()}
             className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-violet-500 py-3.5 text-base font-semibold text-white shadow-lg shadow-violet-900/40 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {startWalkInBusy ? (
-              <>
-                <span className="size-5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-                Creating…
-              </>
-            ) : (
-              "Start walk-in order"
-            )}
-          </button>
+            Start walk-in order
+          </LoadingButton>
         </div>
       </div>
     );
@@ -484,11 +498,21 @@ export function TableOrderClient({ tableId }: { tableId: string }) {
                 <button
                   key={it.id}
                   type="button"
+                  disabled={addingItemId !== null}
                   onClick={() => void addItem(it.id)}
-                  className="min-h-[3.5rem] touch-manipulation rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 text-left transition duration-75 hover:-translate-y-0.5 hover:border-[var(--accent)] hover:shadow-md active:scale-[0.98]"
+                  className="relative min-h-[3.5rem] touch-manipulation rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 text-left transition duration-75 hover:-translate-y-0.5 hover:border-[var(--accent)] hover:shadow-md active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  <div className="font-semibold">{it.name}</div>
-                  <div className="mt-1 tabular-nums text-[var(--success)]">₹{Number(it.price).toFixed(2)}</div>
+                  {addingItemId === it.id ? (
+                    <span className="flex items-center gap-2">
+                      <Spinner className="size-5 text-[var(--accent)]" />
+                      <span className="text-sm font-medium text-[var(--muted)]">Adding…</span>
+                    </span>
+                  ) : (
+                    <>
+                      <div className="font-semibold">{it.name}</div>
+                      <div className="mt-1 tabular-nums text-[var(--success)]">₹{Number(it.price).toFixed(2)}</div>
+                    </>
+                  )}
                 </button>
               ))}
             </div>
@@ -520,30 +544,36 @@ export function TableOrderClient({ tableId }: { tableId: string }) {
                 {it.status === "ADDED" && (
                   <div className="mt-2 flex flex-wrap gap-2">
                     {String(it.id).startsWith("opt-") ? (
-                      <span className="text-xs font-medium text-[var(--muted)]">Saving line…</span>
+                      <span className="inline-flex items-center gap-1.5 text-xs font-medium text-[var(--muted)]">
+                        <Spinner className="size-3.5" />
+                        Saving line…
+                      </span>
                     ) : (
                       <>
                         <button
                           type="button"
-                          className="rounded-lg bg-[var(--border)] px-2 py-1 text-xs transition duration-75 hover:brightness-125 active:scale-95"
+                          disabled={lineMutatingId !== null}
+                          className="inline-flex min-h-8 min-w-8 items-center justify-center rounded-lg bg-[var(--border)] px-2 py-1 text-xs transition duration-75 hover:brightness-125 active:scale-95 disabled:opacity-50"
                           onClick={() => void updateQty(it.id, it.quantity - 1)}
                         >
-                          −
+                          {lineMutatingId === it.id ? <Spinner className="size-3.5" /> : "−"}
                         </button>
                         <span className="px-1">{it.quantity}</span>
                         <button
                           type="button"
-                          className="rounded-lg bg-[var(--border)] px-2 py-1 text-xs transition duration-75 hover:brightness-125 active:scale-95"
+                          disabled={lineMutatingId !== null}
+                          className="inline-flex min-h-8 min-w-8 items-center justify-center rounded-lg bg-[var(--border)] px-2 py-1 text-xs transition duration-75 hover:brightness-125 active:scale-95 disabled:opacity-50"
                           onClick={() => void updateQty(it.id, it.quantity + 1)}
                         >
-                          +
+                          {lineMutatingId === it.id ? <Spinner className="size-3.5" /> : "+"}
                         </button>
                         <button
                           type="button"
-                          className="rounded-lg bg-red-900/40 px-2 py-1 text-xs text-red-300 transition duration-75 hover:bg-red-900/60 active:scale-95"
+                          disabled={lineMutatingId !== null}
+                          className="inline-flex min-h-8 items-center justify-center rounded-lg bg-red-900/40 px-2 py-1 text-xs text-red-300 transition duration-75 hover:bg-red-900/60 active:scale-95 disabled:opacity-50"
                           onClick={() => void cancelLine(it.id)}
                         >
-                          Cancel
+                          {lineMutatingId === it.id ? <Spinner className="size-3.5" /> : "Cancel"}
                         </button>
                       </>
                     )}
@@ -553,21 +583,25 @@ export function TableOrderClient({ tableId }: { tableId: string }) {
             ))}
           </ul>
           <div className="mt-4 flex flex-col gap-2">
-            <button
+            <LoadingButton
               type="button"
+              loading={kitchenBusy}
+              disabled={billBusy}
               onClick={() => void sendKitchen()}
               className="w-full rounded-xl bg-amber-600 py-3 text-lg font-semibold text-white shadow-md transition duration-75 hover:brightness-110 active:scale-[0.98]"
             >
               Send to kitchen
-            </button>
+            </LoadingButton>
             {canBill && (
-              <button
+              <LoadingButton
                 type="button"
+                loading={billBusy}
+                disabled={kitchenBusy}
                 onClick={() => void readyBill()}
                 className="w-full rounded-xl bg-[var(--accent)] py-3 text-lg font-semibold text-white shadow-md transition duration-75 hover:brightness-110 active:scale-[0.98]"
               >
                 Ready for billing
-              </button>
+              </LoadingButton>
             )}
           </div>
         </div>

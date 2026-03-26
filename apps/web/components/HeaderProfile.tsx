@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
+import { LoadingButton } from "@/components/LoadingButton";
 import type { AuthUser } from "@/lib/auth";
 import { readShopLogoFile } from "@/lib/shopLogo";
 import type { RestaurantSettings } from "@/lib/types";
@@ -251,13 +252,13 @@ function EditProfileModal({
             >
               Cancel
             </button>
-            <button
+            <LoadingButton
               type="submit"
-              disabled={saving}
+              loading={saving}
               className="flex-1 rounded-xl bg-[var(--accent)] py-3 font-semibold text-white disabled:opacity-50"
             >
-              {saving ? "Saving…" : "Save"}
-            </button>
+              Save
+            </LoadingButton>
           </div>
         </form>
       </div>

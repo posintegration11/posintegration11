@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
+import { LoadingButton } from "@/components/LoadingButton";
 import { getUser } from "@/lib/auth";
 import { readShopLogoFile } from "@/lib/shopLogo";
 import type { RestaurantSettings } from "@/lib/types";
@@ -9,6 +10,7 @@ import type { RestaurantSettings } from "@/lib/types";
 export default function SettingsPage() {
   const [s, setS] = useState<RestaurantSettings | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
   const role = getUser()?.role ?? "";
   const isAdmin = role === "ADMIN";
 
@@ -47,6 +49,8 @@ export default function SettingsPage() {
       window.dispatchEvent(new CustomEvent("pos-shop-updated"));
     } catch (err) {
       setMsg(err instanceof Error ? err.message : "Failed");
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -194,12 +198,13 @@ export default function SettingsPage() {
           </section>
         )}
 
-        <button
+        <LoadingButton
           type="submit"
+          loading={saving}
           className="w-full touch-manipulation rounded-xl bg-[var(--accent)] py-3 font-semibold text-white transition duration-75 hover:brightness-110 active:scale-[0.98]"
         >
           Save
-        </button>
+        </LoadingButton>
       </form>
     </div>
   );

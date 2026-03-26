@@ -3,7 +3,9 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
+import { AppEntryNotice } from "@/components/AppEntryNotice";
 import { ShopBrandMark } from "@/components/ShopBrandMark";
+import { Spinner } from "@/components/Spinner";
 import { api } from "@/lib/api";
 import { clearSession, getToken, getUser, type AuthUser } from "@/lib/auth";
 import { reconnectSocket } from "@/lib/socket";
@@ -156,8 +158,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   if (!user) {
     return (
-      <div className="flex min-h-screen items-center justify-center px-4 text-[var(--muted)]">
-        Loading…
+      <div className="safe-pb safe-pt flex min-h-dvh flex-col items-center justify-center gap-3 bg-[var(--bg)] px-4 text-[var(--muted)]">
+        <Spinner className="size-9 text-[var(--accent)]" />
+        <p className="text-sm font-medium">Loading workspace…</p>
       </div>
     );
   }
@@ -173,7 +176,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   const linkClass = (href: string) =>
     `touch-manipulation rounded-lg px-3 py-2.5 text-sm font-medium transition duration-75 active:scale-[0.98] md:py-2 ${
-      pathname === href ? "bg-[var(--accent)] text-white" : "hover:bg-[var(--border)]"
+      pathname === href ? "bg-[var(--accent)] text-white shadow-md shadow-[var(--accent)]/25" : "hover:bg-[var(--border)]"
     }`;
 
   const sidebarInner = (
@@ -218,7 +221,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   );
 
   return (
-    <div className="flex min-h-dvh min-h-screen">
+    <>
+      <AppEntryNotice authReady />
+      <div className="flex min-h-dvh min-h-screen overflow-x-hidden">
       {/* Desktop sidebar */}
       <aside className="no-print sticky top-0 hidden h-dvh max-h-dvh w-52 shrink-0 flex-col overflow-y-auto overflow-x-hidden overscroll-y-contain border-r border-[var(--border)] bg-[var(--surface)] p-4 md:flex">
         {sidebarInner}
@@ -261,7 +266,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       <div className="flex min-h-dvh min-h-screen min-w-0 flex-1 flex-col">
         {/* Mobile top bar */}
-        <header className="no-print sticky top-0 z-40 flex items-center gap-3 border-b border-[var(--border)] bg-[var(--surface)]/95 px-3 py-2.5 backdrop-blur-md safe-pt md:hidden">
+        <header className="no-print safe-pt sticky top-0 z-40 flex items-center gap-3 border-b border-[var(--border)] bg-[var(--surface)]/95 px-3 py-3 shadow-md shadow-black/20 backdrop-blur-md md:hidden">
           <button
             type="button"
             onClick={() => setMobileDrawerOpen(true)}
@@ -281,20 +286,20 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </header>
 
-        <main className="min-w-0 flex-1 px-3 py-4 pb-[calc(4.5rem+env(safe-area-inset-bottom,0px))] sm:px-4 md:px-6 md:py-6 md:pb-6">
+        <main className="min-w-0 flex-1 px-3 py-4 pb-[calc(5rem+env(safe-area-inset-bottom,0px))] sm:px-4 md:px-6 md:py-6 md:pb-6">
           {children}
         </main>
 
         {/* Mobile bottom tabs */}
-        <nav className="no-print fixed bottom-0 left-0 right-0 z-40 flex border-t border-[var(--border)] bg-[var(--surface)]/95 pb-[env(safe-area-inset-bottom,0px)] pt-1 backdrop-blur-md md:hidden">
-          <div className="mx-auto flex w-full max-w-lg items-stretch justify-around gap-0.5 px-1">
+        <nav className="no-print fixed bottom-0 left-0 right-0 z-40 flex rounded-t-2xl border border-b-0 border-[var(--border)] bg-[var(--surface)]/98 pb-[env(safe-area-inset-bottom,0px)] pt-1.5 shadow-[0_-8px_32px_rgba(0,0,0,0.45)] backdrop-blur-md md:hidden">
+          <div className="mx-auto flex w-full max-w-lg items-stretch justify-around gap-1 px-1.5">
             {mobileTabs.map((l) => (
               <Link
                 key={l.href}
                 href={l.href}
                 prefetch
-                className={`flex min-w-0 flex-1 flex-col items-center gap-0.5 rounded-lg px-1 py-2 touch-manipulation transition duration-75 active:scale-[0.97] ${
-                  pathname === l.href ? "text-[var(--accent)]" : "text-[var(--muted)]"
+                className={`flex min-w-0 flex-1 flex-col items-center gap-0.5 rounded-xl px-1 py-2 touch-manipulation transition duration-75 active:scale-[0.97] ${
+                  pathname === l.href ? "bg-[var(--accent)]/15 text-[var(--accent)]" : "text-[var(--muted)]"
                 }`}
               >
                 <span className={pathname === l.href ? "text-[var(--accent)]" : "text-[var(--muted)]"}>
@@ -309,8 +314,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <button
                 type="button"
                 onClick={() => setMobileDrawerOpen(true)}
-                className={`flex min-w-0 flex-1 flex-col items-center gap-0.5 rounded-lg px-1 py-2 touch-manipulation transition duration-75 active:scale-[0.97] ${
-                  mobileOverflow.some((l) => pathname === l.href) ? "text-[var(--accent)]" : "text-[var(--muted)]"
+                className={`flex min-w-0 flex-1 flex-col items-center gap-0.5 rounded-xl px-1 py-2 touch-manipulation transition duration-75 active:scale-[0.97] ${
+                  mobileOverflow.some((l) => pathname === l.href) ? "bg-[var(--accent)]/15 text-[var(--accent)]" : "text-[var(--muted)]"
                 }`}
               >
                 <svg className="size-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
@@ -323,5 +328,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </nav>
       </div>
     </div>
+    </>
   );
 }

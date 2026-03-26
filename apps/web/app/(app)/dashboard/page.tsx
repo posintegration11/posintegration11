@@ -4,6 +4,7 @@ import Link from "next/link";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { HeaderProfile } from "@/components/HeaderProfile";
+import { LoadingButton } from "@/components/LoadingButton";
 import { api } from "@/lib/api";
 import { clearSession, getUser, type AuthUser } from "@/lib/auth";
 import { reconnectSocket } from "@/lib/socket";
@@ -163,13 +164,14 @@ export default function DashboardPage() {
     return (
       <div className="space-y-4 rounded-2xl border border-red-500/30 bg-red-950/25 p-8">
         <p className="text-red-300">{error}</p>
-        <button
+        <LoadingButton
           type="button"
+          loading={loading}
           onClick={() => load({ silent: false })}
           className="rounded-xl bg-[var(--accent)] px-4 py-2 font-medium text-white"
         >
           Retry
-        </button>
+        </LoadingButton>
       </div>
     );
   }
@@ -204,14 +206,15 @@ export default function DashboardPage() {
           </p>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2">
-          <button
+          <LoadingButton
             type="button"
             onClick={() => load({ silent: true })}
-            disabled={refreshing || loading}
+            loading={refreshing}
+            disabled={loading}
             className="rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-2.5 text-sm font-medium transition hover:border-[var(--accent)] disabled:opacity-50"
           >
-            {refreshing ? "Refreshing…" : "Refresh"}
-          </button>
+            Refresh
+          </LoadingButton>
           <Link
             href="/tables"
             className="rounded-xl bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-white transition hover:brightness-110"

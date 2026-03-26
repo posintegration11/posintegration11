@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "@/lib/api";
+import { LoadingButton } from "@/components/LoadingButton";
 
 function localISODate(d: Date) {
   const y = d.getFullYear();
@@ -268,14 +269,15 @@ export default function ReportsPage() {
               onChange={(e) => setTo(e.target.value)}
             />
           </label>
-          <button
+          <LoadingButton
             type="button"
             onClick={() => void load({ silent: true })}
-            disabled={refreshing || loading}
+            loading={refreshing}
+            disabled={loading}
             className="touch-manipulation rounded-xl bg-[var(--accent)] px-5 py-2 text-sm font-semibold text-white transition duration-75 hover:brightness-110 active:scale-[0.98] disabled:opacity-50"
           >
-            {refreshing ? "Loading…" : "Refresh"}
-          </button>
+            Refresh
+          </LoadingButton>
         </div>
         <p className="text-sm text-[var(--muted)]">
           Showing: <span className="font-medium text-[var(--text)]">{rangeLabel}</span>
@@ -285,13 +287,14 @@ export default function ReportsPage() {
       {error && (
         <div className="rounded-xl border border-red-500/35 bg-red-950/30 px-4 py-3 text-sm text-red-200">
           {error}
-          <button
+          <LoadingButton
             type="button"
+            loading={loading}
             onClick={() => void load({ silent: false })}
-            className="ml-3 underline"
+            className="ml-3 touch-manipulation text-[var(--accent)] underline"
           >
             Retry
-          </button>
+          </LoadingButton>
         </div>
       )}
 

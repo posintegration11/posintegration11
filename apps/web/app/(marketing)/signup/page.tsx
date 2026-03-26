@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { api } from "@/lib/api";
+import { LoadingButton } from "@/components/LoadingButton";
 
 export default function SignupPage() {
   const router = useRouter();
@@ -117,13 +118,13 @@ export default function SignupPage() {
             autoComplete="new-password"
           />
         </label>
-        <button
+        <LoadingButton
           type="submit"
-          disabled={loading}
+          loading={loading}
           className="w-full rounded-xl bg-[var(--accent)] py-3.5 font-semibold text-white hover:brightness-110 disabled:opacity-50"
         >
-          {loading ? "Creating…" : "Create account"}
-        </button>
+          Create account
+        </LoadingButton>
         <p className="text-center text-sm text-[var(--muted)]">
           <button type="button" onClick={() => router.push("/login")} className="hover:underline">
             Already registered? Sign in

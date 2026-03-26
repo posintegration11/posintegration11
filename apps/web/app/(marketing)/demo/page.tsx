@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { api } from "@/lib/api";
+import { LoadingButton } from "@/components/LoadingButton";
 
 export default function DemoPage() {
   const [email, setEmail] = useState("");
@@ -89,13 +90,13 @@ export default function DemoPage() {
             onChange={(e) => setMessage(e.target.value)}
           />
         </label>
-        <button
+        <LoadingButton
           type="submit"
-          disabled={loading}
+          loading={loading}
           className="w-full rounded-xl bg-[var(--accent)] py-3.5 font-semibold text-white hover:brightness-110 disabled:opacity-50"
         >
-          {loading ? "Sending…" : "Submit"}
-        </button>
+          Submit
+        </LoadingButton>
       </form>
     </div>
   );
