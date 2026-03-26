@@ -15,10 +15,16 @@ export default function AdminMenuPage() {
   const [msg, setMsg] = useState<string | null>(null);
   const [msgTone, setMsgTone] = useState<"err" | "ok">("err");
 
+  const [editingCatId, setEditingCatId] = useState<string | null>(null);
+  const [editCatName, setEditCatName] = useState("");
+
   const loadCats = useCallback(async () => {
     const c = await api<Category[]>("/menu/categories/all");
     setCategories(c);
-    setSel((prev) => (prev ? prev : c[0]?.id ?? null));
+    setSel((prev) => {
+      if (prev && c.some((x) => x.id === prev)) return prev;
+      return c[0]?.id ?? null;
+    });
   }, []);
 
   useEffect(() => {
@@ -68,6 +74,57 @@ export default function AdminMenuPage() {
     }
   }
 
+  function startEditCategory(c: Category) {
+    setEditingCatId(c.id);
+    setEditCatName(c.name);
+    setSel(c.id);
+    setMsg(null);
+  }
+
+  function cancelEditCategory() {
+    setEditingCatId(null);
+    setEditCatName("");
+  }
+
+  async function saveCategoryEdit() {
+    if (!editingCatId || !editCatName.trim()) return;
+    setMsg(null);
+    setMsgTone("err");
+    try {
+      await api(`/menu/categories/${editingCatId}`, {
+        method: "PUT",
+        body: JSON.stringify({ name: editCatName.trim() }),
+      });
+      cancelEditCategory();
+      setMsgTone("ok");
+      setMsg("Category updated.");
+      await loadCats();
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : "Failed");
+    }
+  }
+
+  async function removeCategory(id: string, name: string) {
+    if (
+      !confirm(
+        `Remove category “${name}”? Items never ordered will be deleted. Items on past orders move to “Archived (order history)”.`,
+      )
+    ) {
+      return;
+    }
+    setMsg(null);
+    setMsgTone("err");
+    try {
+      await api(`/menu/categories/${id}`, { method: "DELETE" });
+      if (editingCatId === id) cancelEditCategory();
+      setMsgTone("ok");
+      setMsg("Category removed.");
+      await loadCats();
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : "Failed");
+    }
+  }
+
   async function removeItem(id: string) {
     if (!confirm("Delete item?")) return;
     setMsg(null);
@@ -95,18 +152,74 @@ export default function AdminMenuPage() {
       <div className="grid gap-6 lg:grid-cols-2">
         <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
           <h2 className="font-semibold">Categories</h2>
-          <ul className="mt-3 space-y-1">
+          <ul className="mt-3 space-y-2">
             {categories.map((c) => (
               <li key={c.id}>
-                <button
-                  type="button"
-                  onClick={() => setSel(c.id)}
-                  className={`w-full touch-manipulation rounded-lg px-3 py-2 text-left transition duration-75 active:scale-[0.99] ${
-                    sel === c.id ? "bg-[var(--accent)] text-white" : "hover:bg-[var(--border)]"
-                  }`}
-                >
-                  {c.name}
-                </button>
+                {editingCatId === c.id ? (
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                    <input
+                      className="min-w-0 flex-1 rounded-lg border border-[var(--border)] bg-[var(--bg)] px-3 py-2"
+                      value={editCatName}
+                      onChange={(e) => setEditCatName(e.target.value)}
+                      aria-label="Category name"
+                    />
+                    <div className="flex shrink-0 gap-1">
+                      <button
+                        type="button"
+                        onClick={() => void saveCategoryEdit()}
+                        className="touch-manipulation rounded-lg bg-emerald-600 px-3 py-2 text-sm text-white"
+                      >
+                        Save
+                      </button>
+                      <button
+                        type="button"
+                        onClick={cancelEditCategory}
+                        className="touch-manipulation rounded-lg border border-[var(--border)] px-3 py-2 text-sm"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-stretch gap-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSel(c.id);
+                        setMsg(null);
+                      }}
+                      className={`min-w-0 flex-1 touch-manipulation rounded-lg px-3 py-2 text-left text-sm transition duration-75 active:scale-[0.99] ${
+                        sel === c.id ? "bg-[var(--accent)] text-white" : "hover:bg-[var(--border)]"
+                      }`}
+                    >
+                      <span className="font-medium">{c.name}</span>
+                      {c.status !== "ACTIVE" ? (
+                        <span className="mt-0.5 block text-[10px] uppercase opacity-80">Hidden</span>
+                      ) : null}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => startEditCategory(c)}
+                      className="touch-manipulation rounded-lg border border-[var(--border)] px-2.5 py-2 text-xs font-medium text-[var(--muted)] hover:bg-[var(--border)] hover:text-[var(--text)]"
+                      title="Edit category"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      disabled={c.name === "Archived (order history)"}
+                      onClick={() => void removeCategory(c.id, c.name)}
+                      className="touch-manipulation rounded-lg border border-red-500/30 px-2.5 py-2 text-xs font-medium text-red-400 hover:bg-red-950/30 disabled:cursor-not-allowed disabled:opacity-40"
+                      title={
+                        c.name === "Archived (order history)"
+                          ? "System category cannot be removed"
+                          : "Remove category"
+                      }
+                    >
+                      Remove
+                    </button>
+                  </div>
+                )}
               </li>
             ))}
           </ul>

@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { CategoryStatus, UserRole } from "@prisma/client";
+import { CategoryStatus, UserRole, type Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../prisma.js";
 import { authJwt, requireRole, requireTenantUser } from "../middleware/auth.js";
@@ -7,6 +7,24 @@ import { AppError } from "../middleware/errorHandler.js";
 import { writeAudit } from "../utils/audit.js";
 
 const router = Router();
+
+const ARCHIVE_CATEGORY_NAME = "Archived (order history)";
+
+async function getOrCreateArchiveCategory(tx: Prisma.TransactionClient, restaurantId: string) {
+  const existing = await tx.menuCategory.findFirst({
+    where: { restaurantId, name: ARCHIVE_CATEGORY_NAME },
+  });
+  if (existing) return existing.id;
+  const row = await tx.menuCategory.create({
+    data: {
+      restaurantId,
+      name: ARCHIVE_CATEGORY_NAME,
+      sortOrder: 9999,
+      status: CategoryStatus.INACTIVE,
+    },
+  });
+  return row.id;
+}
 
 router.use(authJwt);
 router.use(requireTenantUser);
@@ -115,8 +133,33 @@ router.delete("/categories/:id", requireRole(UserRole.ADMIN), async (req, res, n
     if (!existing) {
       throw new AppError(404, "Category not found");
     }
-    await prisma.menuCategory.delete({ where: { id } });
-    await writeAudit(req.user!.id, "MENU_CATEGORY_DELETE", "MenuCategory", id, {}, rid);
+    if (existing.name === ARCHIVE_CATEGORY_NAME) {
+      throw new AppError(400, "Cannot delete the system archive category");
+    }
+
+    await prisma.$transaction(async (tx) => {
+      const archiveCatId = await getOrCreateArchiveCategory(tx, rid);
+      if (archiveCatId === id) {
+        throw new AppError(400, "Invalid category");
+      }
+
+      const items = await tx.menuItem.findMany({ where: { categoryId: id }, select: { id: true } });
+      for (const it of items) {
+        const used = await tx.orderItem.count({ where: { menuItemId: it.id } });
+        if (used > 0) {
+          await tx.menuItem.update({
+            where: { id: it.id },
+            data: { categoryId: archiveCatId, isAvailable: false },
+          });
+        } else {
+          await tx.menuItem.delete({ where: { id: it.id } });
+        }
+      }
+
+      await tx.menuCategory.delete({ where: { id } });
+    });
+
+    await writeAudit(req.user!.id, "MENU_CATEGORY_DELETE", "MenuCategory", id, { name: existing.name }, rid);
     res.status(204).send();
   } catch (e) {
     next(e);
