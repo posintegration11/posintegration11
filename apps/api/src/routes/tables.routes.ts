@@ -30,11 +30,15 @@ router.get("/", async (_req, res, next) => {
         },
       },
       include: { items: { where: { status: { not: "CANCELLED" } } } },
+      orderBy: { openedAt: "desc" },
     });
 
+    /** Newest non-terminal order per table (matches GET /tables/:id/active-order). */
     const byTable = new Map<string, (typeof orders)[0]>();
     for (const o of orders) {
-      byTable.set(o.tableId, o);
+      if (!byTable.has(o.tableId)) {
+        byTable.set(o.tableId, o);
+      }
     }
 
     const payload = tables.map((t) => {
@@ -100,9 +104,18 @@ router.post("/:tableId/orders", requireRole(...tableOrderRoles), async (req, res
             notIn: [OrderStatus.PAID, OrderStatus.CLOSED, OrderStatus.CANCELLED],
           },
         },
+        orderBy: { openedAt: "desc" },
       });
       if (active) {
-        return res.status(200).json(active);
+        const full = await prisma.order.findUnique({
+          where: { id: active.id },
+          include: {
+            table: true,
+            items: { orderBy: { id: "asc" } },
+            kots: { include: { items: true }, orderBy: { createdAt: "desc" } },
+          },
+        });
+        return res.status(200).json(full);
       }
     }
 
@@ -152,6 +165,7 @@ router.get("/:tableId/active-order", requireRole(...tableOrderRoles), async (req
           notIn: [OrderStatus.PAID, OrderStatus.CLOSED, OrderStatus.CANCELLED],
         },
       },
+      orderBy: { openedAt: "desc" },
       include: {
         table: true,
         items: { orderBy: { id: "asc" } },

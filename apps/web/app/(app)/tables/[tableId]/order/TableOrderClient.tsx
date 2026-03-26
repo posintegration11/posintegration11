@@ -153,7 +153,7 @@ export function TableOrderClient({ tableId }: { tableId: string }) {
   const orderTotals = useMemo(() => {
     if (!order) return { sub: 0 };
     let sub = 0;
-    for (const it of order.items) {
+    for (const it of order.items ?? []) {
       if (it.status !== "CANCELLED") sub += Number(it.lineTotal);
     }
     return { sub };
@@ -494,7 +494,7 @@ export function TableOrderClient({ tableId }: { tableId: string }) {
           <h2 className="text-lg font-semibold">Order {order.orderNumber}</h2>
           <p className="text-sm tabular-nums text-[var(--muted)]">Running total ₹{orderTotals.sub.toFixed(2)}</p>
           <ul className="mt-4 max-h-[50vh] space-y-3 overflow-y-auto overscroll-contain">
-            {order.items.map((it) => (
+            {(order.items ?? []).map((it) => (
               <li key={it.id} className="rounded-lg border border-[var(--border)] bg-[var(--bg)]/40 p-3 text-sm">
                 <div className="flex justify-between gap-2 font-medium">
                   <span>{it.itemNameSnapshot}</span>

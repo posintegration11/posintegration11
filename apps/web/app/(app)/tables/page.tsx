@@ -208,7 +208,10 @@ export default function TablesPage() {
                 (role === "CASHIER" || role === "ADMIN") &&
                 t.status === "BILLING_PENDING" &&
                 t.activeOrderId;
-              const href = billFirst ? `/billing/${t.activeOrderId}` : `/tables/${t.id}/order`;
+              const orderQs = t.activeOrderId ? `?orderId=${t.activeOrderId}` : "";
+              const href = billFirst
+                ? `/billing/${t.activeOrderId}`
+                : `/tables/${t.id}/order${orderQs}`;
               return (
                 <Link
                   key={t.id}
